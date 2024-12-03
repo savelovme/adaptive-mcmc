@@ -1,0 +1,61 @@
+\documentclass{report}
+\usepackage{graphicx} % Required for inserting images
+\usepackage[utf8]{inputenc}
+
+
+\usepackage[
+backend=biber,
+style=authoryear,
+sorting=ynt
+]{biblatex}
+\addbibresource{references.bib}
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{hyperref}
+\usepackage{xcolor}
+
+
+% New commands
+\newcommand{\prob}[1]{\mathbb{P} \left[ #1 \right]}
+\newcommand{\mexp}[1]{\mathbb{E} \left[ #1 \right]}
+\newcommand{\aseq}{\overset{\mathrm{a.s}}{=}}
+
+
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+
+%\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{assumption}{Assumption}
+\renewcommand\theassumption{(A\arabic{assumption})}
+\newtheorem{condition}[theorem]{Condition}
+\newtheorem{example}[theorem]{Example}
+
+\title{Adaptive MCMC}
+\author{Mikhail Savelov}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+
+\chapter{Theoretical Part}
+\input{chapters/theory}
+
+\chapter{Adaptive MCMC}
+\input{chapters/adaptive_mcmc}
+
+\chapter{Numerical Experiments}
+\input{chapters/numerical}
+
+\newpage
+\printbibliography
+
+\end{document}

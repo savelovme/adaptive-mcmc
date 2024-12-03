@@ -1,0 +1,71 @@
+
+\section{Martingales}
+See \cite{kallenberg2021foundations} 
+% +(Appendix E of \cite{douc2018markov}?)
+
+\section{Markov processes and transition kernels}
+\subsection*{Notation}
+
+Given a measurable space $(\mathcal{X}, \mathcal{F}_{\mathcal{X}})$, let $\mathbb{M}_1(\mathcal{X})$ denote the set of all probability measures on it.
+Let $P$ be a transition kernel on $(\mathcal{X}, \mathcal{F}_{\mathcal{X}})$ which defines a linear operator $P \colon \mathbb{M}_1(\mathcal{X}) \to \mathbb{M}_1(\mathcal{X})$ given by
+\[
+\mu P(B) = \int_{\mathcal{X}} P(x, B) \mu (dx) , \quad \mu \in \mathbb{M}_1(\mathcal{X}), B  \in  \mathcal{F}_{\mathcal{X}} .
+\]
+Further, for a measurable function $f \colon \mathcal{X} \to \mathbb{R}$ and $\mu \in \mathbb{M}_1(\mathcal{X})$ we have 
+\[
+\mu(f) = \int_{\mathcal{X}} f(x) \mu(dx),
+\]
+\[ 
+Pf(x) = \int_{\mathcal{X}} f(y) P(x, dy) 
+\]
+whenever well-defined.
+
+\section{Wasserstein ergodicity}
+
+See \cite{douc2018markov} and \cite{rudolf2017perturbationtheorymarkovchains}
+
+Let $d$ be a metric 
+% (possibly different from the one which makes $\mathcal{X}$ Polish) 
+which is assumed to be lower semi-continuous with respect to the product topology of $\mathcal{X}$. For two probability measures $\nu, \mu \in \mathbb{M}_1(\mathcal{X})$ we define the Wasserstein distance by
+\[
+\mathcal{W}(\nu, \mu):=\inf_{\xi \in \mathcal{C}(\nu, \mu)} \int_{\mathcal{X}^2} d(x,y) \xi(dx , dy) ,
+\]
+where $\mathcal{C}(\mu_1, \mu_2)$ is the set of all couplings of $\nu, \mu$, that is, all probability measures on $\mathcal{X} \times \mathcal{X}$ with marginals $\nu$ and $\mu$.
+
+For a measurable function $f \colon \mathcal{X} \to \mathbb{R}$ we denote Lipschitz semi-norm as
+\[
+\| f \|_d = \sup_{\substack{x, y \in \mathcal{X} \\ x \neq y}} \frac{\left\vert f(x) - f(y) \right\vert}{d(x, y)}
+\]
+% We write $\mathrm{Lip}_1$ for the set of all functions that are Lipschitz (w.r.t. $d$) with constant $1$. 
+
+\begin{theorem}[Kantorovich-Rubenstein duality]
+\label{thm:kantorovich_rubenstein_duality}
+\[
+\mathcal{W}(\nu, \mu) = \sup_{ \| f \|_d \leq 1} \left\vert \nu(f) - \mu(f) \right\vert.
+\]
+\end{theorem}
+
+Further, we define the following quantities: 
+\begin{itemize}
+\item[1)] The eccentricity (see \cite{joulin2010curvature}) is defined as 
+\[
+E(x) = \int_\mathcal{X} d(x, y) \pi(dy).
+\] 
+\item[2)] Coarse diffusion coefficient (see \cite{joulin2010curvature})
+\[
+\mathrm{diff}(x, \gamma) = \int_\mathcal{X} \int_\mathcal{X} d(x', x'')^2 P_{\gamma}(x, dx') P_{\gamma}(x, dx'').
+\]
+\item[3)] The Wasserstein contraction coefficient  for transition kernel $P$ is 
+\[
+\tau(P) = \sup_{\substack{x, y \in \mathcal{X} \\ x \neq y}} \frac{\mathcal{W} (\delta_x P, \delta_y P)}{d(x, y)}.
+\]
+\end{itemize}
+
+\begin{proposition}
+ For the Wasserstein contraction coefficient one has the properties of
+\begin{itemize}
+\item[i)] submultiplicativity, that is $\tau(P \tilde{P} ) \leq \tau(P) \tau(\tilde{P})$, and,
+\item[ii)] contractivity, that is $\mathcal{W}(\nu P , \mu P) \leq \tau(P) \mathcal{W}(\nu, \mu)$,
+\end{itemize}
+for any transition kernels $P$, $\tilde{P}$ and any probability measures $\nu, \mu \in \mathbb{M}_1(\mathcal{X})$.  
+\end{proposition}
