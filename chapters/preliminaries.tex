@@ -11,7 +11,7 @@ Let $P$ be a transition kernel on $(\mathcal{X}, \mathcal{F}_{\mathcal{X}})$ whi
 \[
 \mu P(B) = \int_{\mathcal{X}} P(x, B) \mu (dx) , \quad \mu \in \mathbb{M}_1(\mathcal{X}), B  \in  \mathcal{F}_{\mathcal{X}} .
 \]
-Further, for a measurable function $f \colon \mathcal{X} \to \mathbb{R}$ and $\mu \in \mathbb{M}_1(\mathcal{X})$ we have 
+Further, for a measurable function $f \colon \mathcal{X} \to \mathbb{R}$ and $\mu \in \mathbb{M}_1(\mathcal{X})$ we denote 
 \[
 \mu(f) = \int_{\mathcal{X}} f(x) \mu(dx),
 \]
@@ -30,7 +30,7 @@ which is assumed to be lower semi-continuous with respect to the product topolog
 \[
 \mathcal{W}(\nu, \mu):=\inf_{\xi \in \mathcal{C}(\nu, \mu)} \int_{\mathcal{X}^2} d(x,y) \xi(dx , dy) ,
 \]
-where $\mathcal{C}(\mu_1, \mu_2)$ is the set of all couplings of $\nu, \mu$, that is, all probability measures on $\mathcal{X} \times \mathcal{X}$ with marginals $\nu$ and $\mu$.
+where $\mathcal{C}(\mu, \nu)$ is the set of all couplings of $\nu, \mu$, that is, all probability measures on product $\sigma$-algebra $\mathcal{F}_{\mathcal{X}} \otimes \mathcal{F}_{\mathcal{X}}$ with marginals $\nu$ and $\mu$.
 
 For a measurable function $f \colon \mathcal{X} \to \mathbb{R}$ we denote Lipschitz semi-norm as
 \[
@@ -49,11 +49,11 @@ Further, we define the following quantities:
 \begin{itemize}
 \item[1)] The eccentricity (see \cite{joulin2010curvature}) is defined as 
 \[
-E(x) = \int_\mathcal{X} d(x, y) \pi(dy).
+E(x) = \int_{\mathcal{X}} d(x, y) \pi(dy).
 \] 
 \item[2)] Coarse diffusion coefficient (see \cite{joulin2010curvature})
 \[
-\mathrm{diff}(x, \gamma) = \int_\mathcal{X} \int_\mathcal{X} d(x', x'')^2 P_{\gamma}(x, dx') P_{\gamma}(x, dx'').
+\mathrm{diff}(x, P) = \int_{\mathcal{X}} \int_{\mathcal{X}} d(x', x'')^2 P(x, dx') P(x, dx'').
 \]
 \item[3)] The Wasserstein contraction coefficient  for transition kernel $P$ is 
 \[

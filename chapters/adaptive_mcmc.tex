@@ -4,35 +4,43 @@
 \label{sec:preliminaries}
 
 Taken from \cite{hofstadler2024sureconvergenceratesadaptive} and \cite{laitinen2024invitationadaptivemarkovchain}
-\\
-We consider a state space $\mathcal{X} $ and a parameter space $\mathcal{I}$, which are assumed to be Polish with countable generated $\sigma$-algebras $\mathcal{F}_\mathcal{X}$ and $\mathcal{F}_{\mathcal{I}}$.  
+
+We consider a state space $\mathcal{X} $ and a parameter space $\mathcal{I}$, which are assumed to be Polish with countable generated $\sigma$-algebras $\mathcal{F}_{\mathcal{X}}$ and $\mathcal{F}_{\mathcal{I}}$.  
 Given a family of transition kernels $\{ {P}_\gamma \}_{\gamma \in \mathcal{I}}$ on $(\mathcal{X}, \mathcal{F}_{\mathcal{X}})$, let  $(X_n, \Gamma_n)_{n \in \mathbb{N}_0}$ be an adaptive MCMC chain evolving in the space $\mathcal{X} \times \mathcal{I}$, where $(\Gamma_n)_{n \in \mathbb{N}_0}$ denotes the sequence of (possibly random) adaptation parameters.
 The family $\{P_\gamma\}_{\gamma\in\mathcal{I}}$ must satisfy the following non-restrictive regularity condition: 
 \begin{assumption}[Regularity]
     \label{a:regularity}
         $(\gamma,x) \mapsto P_\gamma(x,A)$ is $\mathcal{F}_{\mathcal{I}} \otimes \mathcal{F}_{\mathcal{X}}$-measurable for all $A\in\mathcal{F}_{\mathcal{X}}$.
 \end{assumption}
-This ensures that $\big((\gamma,x), A\big) \mapsto P_\gamma(x,A)$ defines a probability kernel from $\mathcal{I}\times\mathcal{X}$ to $\mathcal{X}$.
+This ensures that $\big((\gamma,x), A\big) \mapsto P_\gamma(x,A)$ defines a Markov transition kernel from $(\mathcal{I}\times\mathcal{X}, \mathcal{F}_{\mathcal{I}} \otimes \mathcal{F}_{\mathcal{X}})$ to $(\mathcal{X}, \mathcal{F}_{\mathcal{X}})$.
 
-We assume that $\pi$ is the invariant distribution of ${P}_\gamma(x, \cdot )$ for any $x \in \mathcal{X}$.
+We assume that $\pi$ is the invariant distribution of ${P}_\gamma(x, \cdot )$ for any $x \in \mathcal{X}$ and $\gamma \in \mathcal{I}$.
 Moreover, we assume that any kernel $P_\gamma$ is $\psi$-irreducible and aperiodic.
 
-For a fixed test function $\varphi\in L^1(\pi)$, we investigate the convergence properties of the averages
+For a fixed test function $\varphi\in L^1(\pi)$, we consider an estimator 
 \begin{equation}
-\frac{1}{n}\sum_{k=1}^n \varphi(X_k) \xrightarrow{n\to\infty} \pi(\varphi) ,
+\label{eq:pi-hat}
+    \widehat{\pi}_n(\varphi) := \frac{1}{n}\sum_{k=1}^n \varphi(X_k)
+\end{equation}
+
+and investigate the convergence properties
+\begin{equation}
+\widehat{\pi}_n(\varphi) \xrightarrow{n\to\infty} \pi(\varphi) ,
 \label{eq:lln}
 \end{equation}
 
 \section{Martingale decomposition}
-According to \cite{laitinen2024invitationadaptivemarkovchain}, the following two assumptions are needed:
+Following \cite{laitinen2024invitationadaptivemarkovchain}, we make the following two general assumptions:
 
-\begin{assumption}[Iterative algorithm]
+\begin{assumption}[Iterative structure]
    \label{a:markov}
    There is a filtration $(\mathcal{F}_k)_{k\ge 0}$ such that $(X_k, \Gamma_k)_{k \in \mathbb{N}_0}$ is $(\mathcal{F}_k)_{k \in \mathbb{N}_0}$-adapted, and the following holds for all $k\ge 0$ and all measurable $B \in \mathcal{F}_{\mathcal{X}}$:
    \[
    \prob{X_{k+1}\in B\mid \mathcal{F}_k} = P_{\Gamma_k}(X_k,B) \qquad \text{a.s.}
    \]
 \end{assumption}
+
+Natural filtration
 
 \begin{assumption}[Solutions of the Poisson equation]
    \label{a:poisson}
@@ -57,9 +65,13 @@ Our desired convergence \eqref{eq:lln} can be then analysed using the following 
    & \big(=: A_n\big) 
    \nonumber\\
    & + 
-   \sum_{k=1}^n {P_{\Gamma_{k-1}}u_{\Gamma_{k-1}}(X_{k-1}) - P_{\Gamma_k}u_{\Gamma_k}(X_k)} &\big(=: R_n\big).
+   \sum_{k=1}^n {P_{\Gamma_{k-1}}u_{\Gamma_{k-1}}(X_{k-1}) - P_{\Gamma_k}u_{\Gamma_k}(X_k)} &\big(=: R_n\big),
    \nonumber
 \end{align}
+
+% \being{equation}
+%     \hat{\pi}_n(\varphi) - \pi(\varphi) = \frac{M_n}{n} + \frac{A_n}{n} + \frac{R_n}{n}
+% \end{equation}
 
 % The term $R_n$ is a telescoping sum:
 % \[ 
@@ -112,8 +124,8 @@ is well defined and we have
 
 \end{proposition}
 
-We now make an assumption on smoothness w.r.t. parameter $\gamma$. For this purpose, we denote the metric on $\mathcal{I}$ as $\tilde{d}$.
-We aim to have Lipschitz-smoothness of mappings $\gamma \mapsto u_{\gamma}(x)$ for any $x \in \mathcal{X}$. If we express the condition in terms of Wasserstein distances, the following would suffice:
+We now make an assumption on smoothness w.r.t. parameter $\gamma$. For this purpose, we denote a metric on $\mathcal{I}$ as $\tilde{d}$.
+We aim to have Lipschitz-smoothness of mappings $\gamma \mapsto u_{\gamma}(x)$ for any $x \in \mathcal{X}$. The following would suffice to have desired smoothness:
     \[
         \sum_{n=1}^{\infty} \mathcal{W}(\delta_xP_{\gamma}^n, \delta_xP_{\gamma'}^n) \leq \tilde{d}(\gamma, \gamma') \cdot g(x)
     \]
@@ -144,7 +156,7 @@ We aim to have Lipschitz-smoothness of mappings $\gamma \mapsto u_{\gamma}(x)$ f
 
 \begin{proof}
 
-    We use the following decomposition for the proof:
+    We observe that for any $n \in \mathbb{N}_0$ and $x \in \mathcal{X}$ it holds
     \begin{align*}
     P_{\gamma}^n\varphi(x)-P_{\gamma'}^n\varphi(x)
     &=\sum_{i=0}^{n-1} \big(P_{\gamma}^{i+1}P_{\gamma'}^{n-(i+1)}\varphi(x)-P_{\gamma}^{i}P_{\gamma'}^{n-i}\varphi(x)\big)  \\
@@ -207,14 +219,15 @@ We initially assume that \ref{a:markov}, \ref{a:contraction} hold, and $u_\gamma
 \begin{assumption}
 \label{a:bounded-diffusison}
     \[
-    \sup_{n \in \mathbb{N}} \mexp{\mathrm{diff}(X_n, \Gamma_n)} = \Lambda < \infty.
+    \sup_{n \in \mathbb{N}} \mexp{\mathrm{diff}(X_n, P_{\Gamma_n})} = \Lambda < \infty.
     \]
 \end{assumption}
 
 \begin{lemma}
-    Under \ref{a:bounded-diffusison}, $M_n = \sum_{k=1}^n \Delta_k$ defined in \eqref{eq:main-decomposition} is a martingale w.r.t. $(\mathcal{F}_n)_{n \in \mathbb{N}}$.
+    Under \ref{a:bounded-diffusison}, $M_n = \sum_{k=1}^n  u_{\Gamma_{k-1}}(X_k) - P_{\Gamma_{k-1}}u_{\Gamma_{k-1}}(X_{k-1})$ defined in \eqref{eq:main-decomposition} is a martingale w.r.t. $(\mathcal{F}_n)_{n \in \mathbb{N}}$.
 \end{lemma}
 \begin{proof}
+Denote $\Delta_k := u_{\Gamma_{k-1}}(X_k) - P_{\Gamma_{k-1}}u_{\Gamma_{k-1}}(X_{k-1})$ for $k \in \mathbb{N}$.
     \begin{align*}
          \mexp{\lvert \Delta_k \rvert} &=  \mexp{\lvert {u_{\Gamma_{k-1}}(X_k) - P_{\Gamma_{k-1}}u_{\Gamma_{k-1}}(X_{k-1})} \rvert} \\
         &\leq  \mexp{\int_{\mathcal{X}} \lvert u_{\Gamma_{k-1}}(X_k) - u_{\Gamma_{k-1}}(x) \rvert P_{\Gamma_{k-1}}(X_{k-1}, dx) } \\
@@ -240,15 +253,15 @@ We initially assume that \ref{a:markov}, \ref{a:contraction} hold, and $u_\gamma
 
     Disintegration Thm (See Thm. 8.5 in \cite{kallenberg2021foundations}) yields
     \begin{align*}
-        \mexp{\Delta_k \mid \mathcal{F}_{k-1}} &=
+        \mexp{\Delta_k \mid \mathcal{F}_{k-1}} &\aseq
         \mexp{ u_{\Gamma_{k-1}}(X_k) \mid \mathcal{F}_{k-1} } - P_{\Gamma_{k-1}}u_{\Gamma_{k-1}}(X_{k-1}) \\
          &\aseq P_{\Gamma_{k-1}}u_{\Gamma_{k-1}}(X_{k-1}) - P_{\Gamma_{k-1}}u_{\Gamma_{k-1}}(X_{k-1})  \\
-        &= 0
+        &= 0.
     \end{align*}
 \end{proof}
 
 \begin{lemma}
-Under \ref{a:bounded-diffusison} for $M_n$ defined in \ref{eq:main-decomposition} it holds
+Under \ref{a:bounded-diffusison} for $M_n$ defined in \eqref{eq:main-decomposition} it holds
 \[
     \frac{M_n}{n} \xrightarrow{\text{a.s.}} 0.
 \]
@@ -271,7 +284,7 @@ Under \ref{a:bounded-diffusison} for $M_n$ defined in \ref{eq:main-decomposition
     \end{align*}
     That is, $V_n$ is a $L^2$-bounded martingale, which converges to an a.s.~finite $V_\infty = \sum_{k=1}^\infty\frac{\Delta_k}{k}$ almost surely (see Corollary E.3.5 in \cite{douc2018markov}). Whenever $V_\infty$ is finite, Kronecker's lemma implies that 
     \begin{equation*}
-        \frac{M_n}{n}=\frac{1}{n}\sum_{k=1}^n k \frac{\Delta_k}{k}\xrightarrow{n\to\infty} 0 \quad\text{(a.s.)}.
+        \frac{M_n}{n}=\frac{1}{n}\sum_{k=1}^n k \frac{\Delta_k}{k}\xrightarrow{\text{a.s.}} 0.
     \end{equation*}
 \end{proof}
 \end{lemma}
@@ -289,7 +302,7 @@ Under \ref{a:bounded-diffusison} for $M_n$ defined in \ref{eq:main-decomposition
     \frac{R_n}{n} \xrightarrow{\text{a.s.}} 0, \qquad \frac{R_n}{\sqrt{n}} \xrightarrow{P} 0.
 \]
 \begin{proof}
-    For $p = 1, \frac{1}{2}$ we have
+    For $p \in \{1, \frac{1}{2}\}$ we have
     \begin{align*}
         \left\vert\frac{R_n}{n^p}\right\vert
         &=\frac{1}{n^p}\big|P_{\Gamma_{n}}u_{\Gamma_{n}}(X_{n})- P_{\Gamma_0}u_{\Gamma_0}(X_0)\big| \\
@@ -316,7 +329,7 @@ For the first term we bound
 
   We also have $\prob{\frac{1}{\sqrt{n}} \left\vert P_{\Gamma_n}u_{\Gamma_n}(X_n) \right\vert > \varepsilon}\xrightarrow{n \to \infty} 0$, yielding
   \[
-  \frac{1}{\sqrt{n}}\big|P_{\Gamma_{n}}u_{\Gamma_{n}}(X_{n})\big| \xrightarrow{P} 0.]
+  \frac{1}{\sqrt{n}}\big|P_{\Gamma_{n}}u_{\Gamma_{n}}(X_{n})\big| \xrightarrow{P} 0.
   \]
 
 %     \begin{align*}
@@ -355,13 +368,12 @@ For the first term we bound
 \end{proof}
 \end{lemma}
 
-Denote $D_k := \|\tilde{d}(\Gamma_{k-1}, \Gamma_k) \|_2 = \sqrt{\mexp{\tilde{d}(\Gamma_{k-1}, \Gamma_k)^2}}$.
+For $k \in \mathbb{N}$, denote $D_k := \|\tilde{d}(\Gamma_{k-1}, \Gamma_k) \|_2 = \sqrt{\mexp{\tilde{d}(\Gamma_{k-1}, \Gamma_k)^2}}$.
 \begin{assumption}
 \label{a:adaptation-strong}
  Suppose the following series converges:
-
 \[
-\sum_{k=1}^{\infty} \frac{1}{k} \sqrt{\mexp{\tilde{d}(\Gamma_{k-1}, \Gamma_k)^2}} = \sum_{k=1}^{\infty} \frac{1}{k} D_k =: D < \infty.
+\sum_{k=1}^{\infty} \frac{1}{k} D_k =: D < \infty.
 \]
 
 \end{assumption}
@@ -392,10 +404,9 @@ Under \ref{a:gamma-lipshitz}, \ref{a:bounded-eccentricity} and \ref{a:adaptation
         &  \leq \frac{\tilde{L} C^2 \| \varphi \|_d}{(1-\tau)^2} \cdot \frac{1}{n} \sum_{k=1}^n \tilde{d}(\Gamma_{k-1}, \Gamma_k) E(X_k).
     \end{align*}
 
-    Consider $Y_n := \sum_{k=1}^n \frac{1}{k} \tilde{d}(\Gamma_{k-1}, \Gamma_k) E(X_k) $.
-    % By monothone convergence there exits a pointwise limit $Y_{\infty} \in [0, \infty]$.
+    Consider $Y_n := \sum_{k=1}^n \frac{1}{k} \tilde{d}(\Gamma_{k-1}, \Gamma_k) E(X_k) $. Since all terms are nonnegative, for each $\omega \in \Omega$ there exists a pointwise limit $Y_{\infty}(\omega) := \lim_{n \to \infty} Y_n(\omega) \in [0, \infty]$.
     
-    We apply Cauchy–Schwarz and use \ref{a:bounded-eccentricity} and \ref{a:adaptation}:
+    We apply Cauchy–Schwarz and use \ref{a:bounded-eccentricity} and \ref{a:adaptation-strong}:
     \begin{align*}
         \mexp{Y_n} 
         &\leq \sum_{k=1}^n  \frac{1}{k} \sqrt{\mexp{\tilde{d}(\Gamma_{k-1}, \Gamma_k)^2} \mexp{E(X_k)^2}} \\
@@ -403,7 +414,7 @@ Under \ref{a:gamma-lipshitz}, \ref{a:bounded-eccentricity} and \ref{a:adaptation
         &= \sqrt{K} \sum_{k=1}^n \frac{1}{k} D_k\\
         &\leq \sqrt{K} \cdot D < \infty.
     \end{align*}
-    By monotone convergence, the pointwise limit $Y_{\infty}$ satisfies $\mexp{Y_{\infty}} \leq \sqrt{K} \cdot D$ and hence $Y_{\infty}$ is a.s. finite.
+    By monotone convergence, $Y_{\infty}$ satisfies $\mexp{Y_{\infty}} \leq \sqrt{K} \cdot D$ and hence it is a.s. finite.
     Finally, Kronecker's lemma implies that
     \[
         \frac{1}{n} \sum_{k=1}^n \tilde{d}(\Gamma_{k-1}, \Gamma_k) E(X_k) = \frac{1}{n} \sum_{k=1}^n k \cdot \frac{1}{k} \tilde{d}(\Gamma_{k-1}, \Gamma_k) E(X_k) \xrightarrow{\text{a.s.}} 0. 
