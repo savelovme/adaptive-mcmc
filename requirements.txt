@@ -1,0 +1,9 @@
+jax==0.4.36
+matplotlib==3.9.3
+numpy==2.2.0
+numpyro==0.16.1
+pandas==2.2.3
+posteriordb==0.2.0
+scikit_learn==1.6.0
+scipy==1.14.1
+seaborn==0.13.2
