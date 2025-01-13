@@ -12,5 +12,8 @@ main.toc
 .DS_Store
 /python/.ipynb_checkpoints
 tex/.DS_Store
-tex/.DS_Store
+/.ipynb_checkpoints
+*.pyc
 *.csv
+tex/.DS_Store
+tex/.DS_Store
