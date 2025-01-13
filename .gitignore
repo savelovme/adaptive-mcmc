@@ -8,6 +8,9 @@ main.out
 main.run.xml
 main.synctex.gz
 main.toc
-/.ipynb_checkpoints
 /__pycache__
 .DS_Store
+/python/.ipynb_checkpoints
+tex/.DS_Store
+tex/.DS_Store
+*.csv

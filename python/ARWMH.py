@@ -15,25 +15,28 @@ ARWMHState = namedtuple(
         "i",  # Iteration
         "z",  # Current Point
         "potential_energy",  # Current potential energy
-        "accept_prob",  # Acceptance probability of the last step
         "mean_accept_prob",  # Running mean of acceptance probabilities
-        "adapt_state",  # Mean & Covariance matrix estimate
+        "adapt_state",  # Mean & Covariance matrix estimate; step size
         "rng_key",  # Random number generator state
     ],
 )
 
-AdaptState = namedtuple("AdaptState", ["mean", "covariance"])
+AdaptState = namedtuple("AdaptState", ["mean", "covariance", "step_size"])
 
 class ARWMH(numpyro.infer.mcmc.MCMCKernel):
+    """
+    Adaptive Random Walk Metropolis-Hastings
+    """
     sample_field = "z"  # Field representing the MCMC sample
 
     def __init__(
-        self, model=None, potential_fn=None, step_size=1.0, eps=1e-6, init_strategy=init_to_uniform
+        self, model=None, potential_fn=None, target_accept_prob=0.3, gamma=0.05, eps=1e-6, init_strategy=init_to_uniform
     ):
         """
         :param model: Optional model to initialize the kernel.
         :param potential_fn: A callable representing the negative log-posterior density.
-        :param step_size: Proposal covariance scale.
+        :param target_accept_prob: Target acceptance rate.
+        :param gamma: Adaptation parameter for step size.
 	    :param eps: Regularization for proposal covariance.
         :param callable init_strategy: a per-site initialization function.
         """
@@ -41,7 +44,9 @@ class ARWMH(numpyro.infer.mcmc.MCMCKernel):
             raise ValueError("Only one of `model` or `potential_fn` must be specified.")
         self._model = model
         self._potential_fn = potential_fn
-        self._step_size = step_size
+        self._step_size = 1.0
+        self._target_accept_prob = target_accept_prob
+        self._gamma=gamma
         self._eps=eps
         self._postprocess_fn = None
         self._init_strategy = init_strategy
@@ -90,17 +95,17 @@ class ARWMH(numpyro.infer.mcmc.MCMCKernel):
 
         potential_energy = self._potential_fn(init_params)
 
-	      # Flatten a pytree structure of arrays down to a 1D array.
+    	# Flatten a pytree structure of arrays down to a 1D array.
         mu_hat = ravel_pytree(init_params)[0]
-        sigma_hat = jnp.eye(len(mu_hat)) * self._step_size
-        adapt_state = AdaptState(mu_hat, sigma_hat)
+        step_size = 1.0
+        sigma_hat = jnp.eye(len(mu_hat)) * step_size**2
+        adapt_state = AdaptState(mu_hat, sigma_hat, step_size)
 
         init_state = ARWMHState(
             i=jnp.array(0),
             z=init_params,
             potential_energy=potential_energy,
-            accept_prob=jnp.zeros(()),
-            mean_accept_prob=jnp.zeros(()),
+            mean_accept_prob=jnp.array(0.0),
             adapt_state=adapt_state,
             rng_key=rng_key,
         )
@@ -117,8 +122,8 @@ class ARWMH(numpyro.infer.mcmc.MCMCKernel):
         :param model_kwargs: Keyword arguments for the model.
         :return: Updated ARWMHState.
         """
-        i, z, potential_energy, _, mean_accept_prob, adapt_state, rng_key = state
-        mu_hat, sigma_hat = adapt_state
+        i, z, potential_energy, mean_accept_prob, adapt_state, rng_key = state
+        mu_hat, sigma_hat, step_size = adapt_state
 
         # Flatten a pytree of arrays down to a 1D array.
         z_flat, unravel_fn = ravel_pytree(z)
@@ -127,13 +132,15 @@ class ARWMH(numpyro.infer.mcmc.MCMCKernel):
         rng_key, key_proposal, key_accept = jax.random.split(rng_key, 3)
 
         # Propose a new sample
-        proposal_cov = self._step_size**2 * sigma_hat + jnp.eye(len(z_flat)) * self._eps
-        z_proposal_flat = dist.MultivariateNormal(z_flat, proposal_cov).sample(key_proposal)
+        proposal_cov =  sigma_hat * step_size**2 + jnp.eye(len(z_flat)) * self._eps
+        z_step_flat = dist.MultivariateNormal(loc=0.0, covariance_matrix=proposal_cov).sample(key_proposal)
+        z_proposal_flat = z_flat + z_step_flat
         z_proposal = unravel_fn(z_proposal_flat)
         potential_energy_proposal = self._potential_fn(z_proposal)
+        potential_energy_proposal = jnp.where(jnp.isnan(potential_energy_proposal), jnp.inf, potential_energy_proposal)
 
         # Compute acceptance probability
-        accept_prob = jnp.clip(jnp.exp(potential_energy - potential_energy_proposal), min=None, max=1)
+        accept_prob = jnp.clip(jnp.exp(potential_energy - potential_energy_proposal), min=0, max=1)
         is_accepted = dist.Uniform().sample(key_accept) < accept_prob
 
         # Update state based on acceptance
@@ -143,24 +150,30 @@ class ARWMH(numpyro.infer.mcmc.MCMCKernel):
 
 	    # Update iteration counter
         itr = i + 1
-        # # Restart n after warmup
-        # n = jnp.where(i < self._num_warmup, itr, itr - self._num_warmup)
-
-        # Adaptation step (update mean and covariance)
-        eta = 1 / itr
-        delta = z_new_flat - mu_hat
-        mu_new = mu_hat + eta * delta
-        sigma_new = sigma_hat + eta *(jnp.outer(delta, delta) - sigma_hat)
-        adapt_state_new = AdaptState(mu_new, sigma_new)
+        
+        # Restart n after warmup
+        n = jnp.where(i < self._num_warmup, itr, itr - self._num_warmup)
+        eta = 1.0 / n
 
         # Update running mean of acceptance probabilities
-        mean_accept_prob_new = mean_accept_prob + (accept_prob - mean_accept_prob) / itr
+        mean_accept_prob_new = mean_accept_prob + eta * (accept_prob - mean_accept_prob)
+
+        # Adaptation: update mean and covariance
+        delta = z_new_flat - mu_hat
+        mu_new = mu_hat + eta * delta
+        sigma_new = sigma_hat + eta * (jnp.outer(delta, delta) - sigma_hat)
+        
+        # Step Size Adaptation (only during warmup)
+        step_size_new = step_size * jnp.exp(self._gamma * (mean_accept_prob_new - self._target_accept_prob))
+        step_size_new = jnp.clip(step_size_new, 1e-3, 1e1)
+        step_size_new = jnp.where(i < self._num_warmup, step_size_new, step_size)
+
+        adapt_state_new = AdaptState(mu_new, sigma_new, step_size_new)
 
         return ARWMHState(
             i=itr,
             z=z_new,
             potential_energy=potential_energy_new,
-            accept_prob=accept_prob,
             mean_accept_prob=mean_accept_prob_new,
             adapt_state=adapt_state_new,
             rng_key=rng_key,
@@ -173,4 +186,4 @@ class ARWMH(numpyro.infer.mcmc.MCMCKernel):
         :param state: Current ARWMHState.
         :return: Diagnostics string.
         """
-        return f"Acceptance rate: {state.mean_accept_prob:.2f}"
+        return f"Acceptance rate: {state.mean_accept_prob:.2f}, Step size: {state.adapt_state.step_size:.3f}"
