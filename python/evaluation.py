@@ -13,87 +13,170 @@ from ott.solvers import linear
 @jit
 def pth_moment_rmse(x, y, p=2.0):
     """
-    Compute estimate of p-th moment from samples
+    Compute RMSE between estimates of p-th moment from samples.
 
-    :param x: Array of shape (n, d)
-    :param y: Array of shape (m, d)
-    :param p: float 
-    :return: Scalar
+    Parameters
+    ----------
+    x : jnp.ndarray
+        Array of shape (n, d).
+    y : jnp.ndarray
+        Array of shape (m, d).
+    p : float
+        The moment to compute, default is 2.0.
+
+    Returns
+    -------
+    float
+        Scalar RMSE of p-th moment estimates.
+
     """
 
     pth_moment_x = jnp.mean(x**p, axis=0)
     pth_moment_y = jnp.mean(y**p, axis=0)
     
-    rmse = (((pth_moment_x - pth_moment_y))**2).mean()**0.5
+    rmse = jnp.mean(((pth_moment_x - pth_moment_y))**2)**0.5
         
     return rmse
 
 
-def wasserstein_dist11_p(u_values, v_values, p=2.0):
+def wasserstein_dist11_p(u_values, v_values, ord=2.0):
     """
     Compute Wasserstein-p distance via optimal 1-1 coupling between samples.
 
-    :param u_values: Array of shape (n, d)
-    :param v_values: Array of shape (n, d)
-    :param p: float 
-    :return: Scalar value representing Wasserstein-p distance
+    Parameters
+    ----------
+    u_values : jnp.ndarray
+        Array of shape (n, d).
+    v_values : jnp.ndarray
+        Array of shape (n, d).
+    ord : float
+        Order of the used norm, default is 2.0.
+
+    Returns
+    -------
+    float
+        Scalar value representing Wasserstein-p distance.
+
     """
 
-    cost_matrix = distance_matrix(u_values, v_values, p=p)
+    cost_matrix = distance_matrix(u_values, v_values, p=ord)
     row_ind, col_ind = linear_sum_assignment(cost_matrix)
 
     opt_cost = cost_matrix[row_ind, col_ind].mean().item()
     return opt_cost
 
 
-ot_solve_fn = jit(linear.solve)
+def wasserstein_sinkhorn(u_values, v_values, cost_fn=costs.Euclidean(), epsilon=None):
+    """
+    Compute entropy regularized Wasserstein distance approximation using Sinkhorn's algorithm.
 
-def wasserstein_distance_ot(u_values, v_values, cost_fn=costs.Euclidean()):
+    Parameters
+    ----------
+    u_values : jnp.ndarray
+        Array of shape (n, d).
+    v_values : jnp.ndarray
+        Array of shape (m, d).
+    cost_fn : costs.CostFunction, optional
+        Cost function to use, default is Euclidean.
+    epsilon : float or None, optional
+        Entropy regularization parameter.
+
+    Returns
+    -------
+    float
+        Scalar value representing the approximated Wasserstein distance.
+
     """
-    Compute Wasserstein distance approximation using Sinkhorn's algorithm.
-    """
-    geom = pointcloud.PointCloud(x=u_values, y=v_values, cost_fn=cost_fn)
+
+    geom = pointcloud.PointCloud(x=u_values, y=v_values, cost_fn=cost_fn, epsilon=epsilon)
+
+    ot_solve_fn = jit(linear.solve)
     ot = ot_solve_fn(geom)
 
     assert ot.converged
         
-    return ot.primal_cost.item()
+    return ot.ent_reg_cost.item()
 
 
-def wasserstein_1d(mu, nu, p=2.0):
+def wasserstein_sinkhorn_unbiased(u_values, v_values, cost_fn=costs.Euclidean(), epsilon=None):
+    """
+    Compute unbiased Wasserstein distance approximation using Sinkhorn's algorithm.
+
+    Parameters
+    ----------
+    u_values : jnp.ndarray
+        Array of shape (n, d).
+    v_values : jnp.ndarray
+        Array of shape (m, d).
+    cost_fn : costs.CostFunction, optional
+        Cost function to use, default is Euclidean.
+    epsilon : float or None, optional
+        Entropy regularization parameter.
+
+    Returns
+    -------
+    float
+        Scalar value representing the unbiased approximated Wasserstein distance.
+
+    """
+
+    Wuv = wasserstein_sinkhorn(u_values, v_values, cost_fn=cost_fn, epsilon=epsilon)
+    Wuu = wasserstein_sinkhorn(u_values, u_values, cost_fn=cost_fn, epsilon=epsilon)
+    Wvv = wasserstein_sinkhorn(v_values, v_values, cost_fn=cost_fn, epsilon=epsilon)
+
+    return Wuv - (Wuu + Wvv)/2
+
+
+def wasserstein_1d(mu, nu, p=1.0):
     """
     Compute the Wasserstein-p distance between two 1D arrays.
-    
-    Parameters:
-    - mu, nu: 1D arrays.
-    
-    Returns:
-    - float: The Wasserstein distance in 1D.
+
+    Parameters
+    ----------
+    mu : jnp.ndarray
+        1D array.
+    nu : jnp.ndarray
+        1D array.
+    p : float, optional
+        Order of the Wasserstein distance, default is 1.0.
+
+    Returns
+    -------
+    float
+        The Wasserstein distance in 1D.
+
     """
 
     # Compute the absolute differences
     diff = jnp.abs(jnp.sort(mu) - jnp.sort(nu))
-    
-    # Raise to the power of p
-    diff_p = diff ** p
-    
+        
     # Compute the p-th root of the sum of differences to the power p
-    return jnp.power(jnp.mean(diff_p), 1.0 / p)
+    return jnp.mean(diff ** p) ** (1.0 / p)
 
 
-@jit
-def max_sliced_wasserstein(mu, nu, rng_key, p=2.0, n_directions=1000):
+# @jit
+def max_sliced_wasserstein(mu, nu, rng_key, p=1.0, n_directions=1000):
     """
-    Approximate the Wasserstein distance using the max-sliced approach with JAX.
+    Approximate the Wasserstein distance using the max-sliced approach.
 
-    Parameters:
-    - mu, nu: jnp.arrays of shape (n_samples, n_dimensions) representing 
-              points sampled from two distributions.
-    - key: JAX PRNG key for randomness.
-    - n_directions: Number of random directions to project onto.
+    Parameters
+    ----------
+    mu : jnp.ndarray
+        Array of shape (n, d) representing points sampled from the first distribution.
+    nu : jnp.ndarray
+        Array of shape (n, d) representing points sampled from the second distribution.
+    rng_key : random.PRNGKey
+        JAX PRNG key for randomness.
+    p : float, optional
+        Order of the Wasserstein distance, default is 1.0.
+    n_directions : int, optional
+        Number of random directions to project onto, default is 1000.
 
-    Returns:
-    - float: An approximation of the Wasserstein distance.
+    Returns
+    -------
+    float
+        An approximation of the Wasserstein distance.
+
     """
     n_dim = mu.shape[1]
     
@@ -116,11 +199,21 @@ def max_sliced_wasserstein(mu, nu, rng_key, p=2.0, n_directions=1000):
 def gaussian_kernel(x, y, gamma):
     """
     Compute the Gaussian kernel between vectors x and y.
-    
-    :param x: Array of shape (n, d)
-    :param y: Array of shape (m, d)
-    :param gamma: Bandwidth parameter for the Gaussian kernel
-    :return: Jax array of shape (n, m)
+
+    Parameters
+    ----------
+    x : jnp.ndarray
+        Array of shape (n, d).
+    y : jnp.ndarray
+        Array of shape (m, d).
+    gamma : float
+        Bandwidth parameter for the Gaussian kernel.
+
+    Returns
+    -------
+    jnp.ndarray
+        Jax array of shape (n, m).
+
     """
 
     eucl_dist2 = jnp.sqrt(((x[:, None, :] - y[None, :, :]) ** 2).sum(-1))
@@ -133,10 +226,20 @@ def mmd2_unbiased(x, y, gamma=1.0):
     """
     Compute the unbiased MMD^2 estimator between two sets of samples.
 
-    :param x: Array of shape (n, d)
-    :param y: Array of shape (m, d)
-    :param gamma: Bandwidth parameter for the Gaussian kernel
-    :return: Scalar value representing the MMD^2
+    Parameters
+    ----------
+    x : jnp.ndarray
+        Array of shape (n, d).
+    y : jnp.ndarray
+        Array of shape (m, d).
+    gamma : float, optional
+        Bandwidth parameter for the Gaussian kernel, default is 1.0.
+
+    Returns
+    -------
+    float
+        Scalar value representing the MMD^2.
+
     """
     n = x.shape[0]
     m = y.shape[0]
