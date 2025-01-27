@@ -118,6 +118,10 @@ def run(N, rng_seed, bs):
     with open(file_path, "wb") as f:
         pickle.dump(final_data, f)
 
+    # Remove the chunk files after processing
+    for file_path in chunk_files:
+        os.remove(file_path)
+
     total_elapsed_time = time.time() - start_time_global
     if total_elapsed_time > 7200:
         total_elapsed_time_str = f"{total_elapsed_time / 3600:.2f} h"
@@ -125,7 +129,9 @@ def run(N, rng_seed, bs):
         total_elapsed_time_str = f"{total_elapsed_time / 60:.2f} min"
     else:
         total_elapsed_time_str = f"{total_elapsed_time:.2f} s"
+
     print(f"Data written to {file_path}. Took {total_elapsed_time_str}.")
+
 
 if __name__ == "__main__":
     
