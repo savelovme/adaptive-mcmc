@@ -64,21 +64,28 @@ def run(N, rng_seed):
     os.makedirs("lipschitz_chunks", exist_ok=True)
 
     rng_keys = random.split(random.PRNGKey(rng_seed), N)
-    save_every = 10
+    bs = 10
 
-    
 
     for idx in range(0, N, bs):
-        
-        rng_key = rng_keys[idx]
-        diff_norm, states_dist = compute_lipschitz(key, kernel)
-        
+
         batch_data = {
-            "rng_key": rng_key,
-            "diff_norm": diff_norm,
-            "states_dist": states_dist
+            "rng_key": [],
+            "diff_norm": [],
+            "states_dist": []
         }
+
+        for rng_key in rng_keys[idx:idx + bs]:
+            diff_norm, states_dist = compute_lipschitz(rng_key, kernel)
+
+            batch_data["rng_key"].append(rng_key)
+            batch_data["diff_norm"].append(diff_norm)
+            batch_data["states_dist"].append(states_dist)
+
         chunk_path = f"lipschitz_chunks/batch_{idx // bs}.pkl"
+        batch_data["rng_key"] = jnp.concatenate(batch_data["rng_key"])
+        batch_data["diff_norm"] = jnp.concatenate(batch_data["diff_norm"])
+        batch_data["states_dist"] = jnp.concatenate(batch_data["states_dist"])
         with open(chunk_path, "wb") as f:
             pickle.dump(batch_data, f)
 
@@ -101,14 +108,13 @@ def run(N, rng_seed):
     final_data["states_dist"] = jnp.concatenate(final_data["states_dist"])
     
     # Save the consolidated file
-    with open("lipschitz_final.pkl", "wb") as f:
+    with open("lipschitz.pkl", "wb") as f:
         pickle.dump(final_data, f)
 
 
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="Process two parameters: N and rng_seed.")
-    
 
     parser.add_argument(
         "--N",
