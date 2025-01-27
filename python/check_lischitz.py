@@ -2,6 +2,7 @@ import argparse
 import os
 import glob 
 import pickle
+import time
 
 import jax.numpy as jnp
 from jax import random, vmap
@@ -51,66 +52,80 @@ def compute_lipschitz(rng_key, kernel, eps=0.001, domain=(-10, 10), step=0.01, n
     return diff_norm, state_dist(s1, s2)
 
 
-def run(N, rng_seed):
-
-    mixing_dist = dist.Categorical(probs=jnp.array([1/3, 2/3]))
+def run(N, rng_seed, bs):
+    mixing_dist = dist.Categorical(probs=jnp.array([1 / 3, 2 / 3]))
     component_dist = dist.Normal(loc=jnp.array([-5, 5]), scale=jnp.array([1, 1]))
     mixture = dist.MixtureSameFamily(mixing_dist, component_dist)
-    
-    potential_fn = lambda x: -1 *mixture.log_prob(x)
+
+    potential_fn = lambda x: -1 * mixture.log_prob(x)
     kernel = AMH(potential_fn=potential_fn)
-    
+
     # Directory to save chunks
     os.makedirs("lipschitz_chunks", exist_ok=True)
 
-    rng_keys = random.split(random.PRNGKey(rng_seed), N)
-    bs = 10
+    start_time_global = time.time()
 
+    rng_keys = random.split(random.PRNGKey(rng_seed), N)
 
     for idx in range(0, N, bs):
 
         batch_data = {
-            "rng_key": [],
+            "rng_key": rng_keys[idx:idx + bs],
             "diff_norm": [],
             "states_dist": []
         }
 
+        start_time = time.time()
         for rng_key in rng_keys[idx:idx + bs]:
             diff_norm, states_dist = compute_lipschitz(rng_key, kernel)
 
-            batch_data["rng_key"].append(rng_key)
             batch_data["diff_norm"].append(diff_norm)
             batch_data["states_dist"].append(states_dist)
 
         chunk_path = f"lipschitz_chunks/batch_{idx // bs}.pkl"
-        batch_data["rng_key"] = jnp.concatenate(batch_data["rng_key"])
-        batch_data["diff_norm"] = jnp.concatenate(batch_data["diff_norm"])
-        batch_data["states_dist"] = jnp.concatenate(batch_data["states_dist"])
+        batch_data["diff_norm"] = jnp.asarray(batch_data["diff_norm"])
+        batch_data["states_dist"] = jnp.asarray(batch_data["states_dist"])
         with open(chunk_path, "wb") as f:
             pickle.dump(batch_data, f)
 
-        print(f"Chunk {idx // bs + 1} from {N // bs + 1} ready.")
+        elapsed_time = time.time() - start_time
+        if elapsed_time > 7200:
+            elapsed_time_str = f"{elapsed_time / 3600:.2f} h"
+        elif elapsed_time > 120:
+            elapsed_time_str = f"{elapsed_time / 60:.2f} min"
+        else:
+            elapsed_time_str = f"{elapsed_time:.2f} s"
+        print(f"{min(idx + bs, N)} / {N} ready. Time elapsed for last iteration: {elapsed_time_str}.")
 
     chunk_files = glob.glob("lipschitz_chunks/*.pkl")
 
     final_data = {"rng_key": [], "diff_norm": [], "states_dist": []}
-    
+
     for file_path in chunk_files:
         with open(file_path, "rb") as f:
             batch_data = pickle.load(f)
             final_data["rng_key"].append(batch_data["rng_key"])
             final_data["diff_norm"].append(batch_data["diff_norm"])
             final_data["states_dist"].append(batch_data["states_dist"])
-    
+
     # Final concatenation
-    final_data["rng_key"] = jnp.concatenate(final_data["rng_key"])
-    final_data["diff_norm"] = jnp.concatenate(final_data["diff_norm"])
-    final_data["states_dist"] = jnp.concatenate(final_data["states_dist"])
-    
+    final_data["rng_key"] = jnp.concatenate(final_data["rng_key"], axis=0)
+    final_data["diff_norm"] = jnp.concatenate(final_data["diff_norm"], axis=0)
+    final_data["states_dist"] = jnp.concatenate(final_data["states_dist"], axis=0)
+
     # Save the consolidated file
-    with open("lipschitz.pkl", "wb") as f:
+    file_path = "lipschitz.pkl"
+    with open(file_path, "wb") as f:
         pickle.dump(final_data, f)
 
+    total_elapsed_time = time.time() - start_time_global
+    if total_elapsed_time > 7200:
+        total_elapsed_time_str = f"{total_elapsed_time / 3600:.2f} h"
+    elif total_elapsed_time > 120:
+        total_elapsed_time_str = f"{total_elapsed_time / 60:.2f} min"
+    else:
+        total_elapsed_time_str = f"{total_elapsed_time:.2f} s"
+    print(f"Data written to {file_path}. Took {total_elapsed_time_str}.")
 
 if __name__ == "__main__":
     
@@ -128,6 +143,13 @@ if __name__ == "__main__":
         required=True,
         help="Random number generator seed"
     )
+
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=10,
+        help="Size of batches for processing (default: 10)"
+    )
     
     # Parse the arguments
     args = parser.parse_args()
@@ -135,6 +157,7 @@ if __name__ == "__main__":
     # Access the arguments
     N = args.N
     rng_seed = args.rng_seed
+    bs = args.batch_size
 
-    run(N, rng_seed)
+    run(N, rng_seed, bs)
 
