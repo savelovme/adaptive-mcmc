@@ -1,6 +1,7 @@
 import argparse
 import os
 import glob 
+import pickle
 
 import jax.numpy as jnp
 from jax import random, vmap
@@ -8,7 +9,7 @@ from jax.scipy.interpolate import RegularGridInterpolator
 
 import numpyro.distributions as dist
 
-from AMH import AMH, sample_adapt_state, sample_neigbour, sample_Px
+from AMH import AMH, sample_adapt_state, sample_neigbour, sample_Px, state_dist
 
 def sample_lipschitz_func(rng_key, domain=(-10, 10), step=0.1):
     """
@@ -62,13 +63,15 @@ def run(N, rng_seed):
     # Directory to save chunks
     os.makedirs("lipschitz_chunks", exist_ok=True)
 
-    bs = 5
     rng_keys = random.split(random.PRNGKey(rng_seed), N)
+    save_every = 10
+
     
+
     for idx in range(0, N, bs):
         
-        rng_key = rng_keys[idx:idx + bs]
-        diff_norm, states_dist = vmap(lambda key: compute_lipschitz(key, kernel))(rng_key)
+        rng_key = rng_keys[idx]
+        diff_norm, states_dist = compute_lipschitz(key, kernel)
         
         batch_data = {
             "rng_key": rng_key,
@@ -79,7 +82,7 @@ def run(N, rng_seed):
         with open(chunk_path, "wb") as f:
             pickle.dump(batch_data, f)
 
-        print(f"Chunk {idx // bs} from {N // bs} ready.")
+        print(f"Chunk {idx // bs + 1} from {N // bs + 1} ready.")
 
     chunk_files = glob.glob("lipschitz_chunks/*.pkl")
 
