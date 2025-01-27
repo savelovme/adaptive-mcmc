@@ -290,19 +290,27 @@ def state_dist(s1, s2):
     return jnp.linalg.norm(C1 - C2)
 
 
-def sample_Px(rng_key, kernel, x, adapt_state, n_samples=1000):
+def sample_Px(rng_key, kernel, x, adapt_state, n_samples=1000, batch_size=100):
     """
-    This function generates samples for a given kernel and initial state (x) using the Adaptive Metropolis-Hastings algorithm.
+    Samples from the posterior distribution using a stochastic MCMC sampling kernel.
 
     Parameters:
-    - rng_key: PRNG key used to generate randomness.
-    - kernel: Sampling kernel that implements the Adaptive Metropolis-Hastings logic.
-    - x: Initial state or starting point for the chain.
-    - adapt_state: Adaptation state required by the kernel, used to adjust the proposal distribution during sampling.
-    - n_samples: Number of samples to generate, defaults to 1000.
+    rng_key: PRNGKey
+        Random key for reproducibility of stochastic processes.
+    kernel: MCMCKernel
+        The kernel object that defines the MCMC sampling algorithm and its properties.
+    x: array-like
+        Initial state or starting point for the Markov Chain.
+    adapt_state: PyTree or custom object
+        State or configuration object for adaptive MCMC algorithms to maintain adaptation information during sampling.
+    n_samples: int, optional (default=1000)
+        Total number of posterior samples to draw.
+    batch_size: int, optional (default=100)
+        Number of samples to generate in each batch. The total number of samples (`n_samples`) should ideally be divisible by `batch_size`.
 
     Returns:
-    An array of sampled states, each generated independently from the provided kernel.
+    samples: array-like
+        Array containing `n_samples` samples drawn from the posterior distribution.
     """
     def single_Px(rkey):
         input_state = AMHState(
@@ -318,6 +326,14 @@ def sample_Px(rng_key, kernel, x, adapt_state, n_samples=1000):
             
         return x_next
 
-    keys = random.split(rng_key, n_samples)
-    return vmap(single_Px)(keys)
+    n_batches = n_samples // batch_size
+    batch_keys = random.split(rng_key, n_batches)
+
+    sampled_batches = [
+        vmap(single_Px)(random.split(batch_key, batch_size))
+        for batch_key in batch_keys
+    ]
+    samples = jnp.concatenate(sampled_batches, axis=0)
+
+    return samples
     
