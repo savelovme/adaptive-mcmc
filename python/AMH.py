@@ -26,12 +26,12 @@ AMHAdaptState = namedtuple("AMHAdaptState", ["mean", "covariance", "log_step_siz
 
 class AMH(numpyro.infer.mcmc.MCMCKernel):
     """
-    Adaptive Random Walk Metropolis-Hastings (ARWMH) kernel for MCMC sampling.
-	
+    AMH kernel for adaptive random walk-based Markov Chain Monte Carlo.
+
     Attributes
     ----------
     sample_field : str
-        The field in the state that represents the MCMC sample ('z').
+        The field name in `AMHState` that contains the current sample.
     """
 
     sample_field = "z"
@@ -211,26 +211,19 @@ class AMH(numpyro.infer.mcmc.MCMCKernel):
 
 def sample_adapt_state(rng_key, dim=1, x_rad=5., log_step_rad=4.):
     """
-    Samples an initial adaptive state for AMH kernel.
+    Generates an initial adaption state for Adaptive Metropolis-Hastings (AMH) algorithm by sampling random values for the mean, covariance, and log step size.
 
-    Parameters
-    ----------
-    rng_key : jax.random.PRNGKey
-        A random key for reproducible random number generation.
-    dim : int, optional
-        Dimensionality of the target distribution (default is 1).
-    x_rad : float, optional
-        Scaling factor for the mean and covariance components (default is 5).
-    log_step_rad : float, optional
-        Scaling factor for the log step size (default is 4).
+    Parameters:
+    rng_key: A JAX random key seeded for reproducibility.
+    dim: Integer specifying the dimensionality of the random variables (default is 1).
+    x_rad: Float determining the scaling factor for mean and covariance matrix (default is 5.0).
+    log_step_rad: Float scaling factor for the log step size (default is 4.0).
 
-    Returns
-    -------
-    AMHAdaptState
-        A tuple representing the adaptive state, which includes:
-        - mean: array of shape (dim,)
-        - cov: array of shape (dim, dim)
-        - lam: float, log step size parameter
+    Returns:
+    An instance of AMHAdaptState containing:
+    - mean: A sampled mean vector of shape (dim,).
+    - cov: A positive semi-definite covariance matrix of shape (dim, dim).
+    - lam: A sampled log step size (scalar).
     """
     k1, k2, k3 = random.split(rng_key, 3)
     
@@ -246,24 +239,24 @@ def sample_adapt_state(rng_key, dim=1, x_rad=5., log_step_rad=4.):
 
 def sample_neigbour(rng_key, adapt_state, eps=1e-2):
     """
-    Samples a neighboring adaptive state by perturbing the given state.
+    Samples a neighboring adapted state for Adapting Metropolis-Hastings algorithm.
 
-    Parameters
-    ----------
-    rng_key : jax.random.PRNGKey
-        A random key for reproducible random number generation.
-    adapt_state : AMHAdaptState
-        The current adaptive state, represented as a tuple of (mean, cov, lam).
-    eps : float, optional
-        Perturbation scale for the mean, covariance, and log step size (default is 1e-2).
+    This function perturbs the current adaptation state by adding small random variations
+    to the mean, covariance, and lambda values. The variations are sampled from a uniform
+    distribution scaled by a small epsilon value. The covariance matrix perturbation
+    ensures positive semidefiniteness by applying perturbation to its Cholesky factor.
 
-    Returns
-    -------
+    Parameters:
+    rng_key: PRNGKey
+        Random number key used for sampling.
+    adapt_state: tuple
+        Contains the current adaptation state (mean, covariance matrix, lambda value).
+    eps: float, optional
+        Perturbation scale for the uniform distribution. Default is 1e-2.
+
+    Returns:
     AMHAdaptState
-        A new adaptive state with perturbed values:
-        - mean: array of the same shape as the input mean
-        - cov: array of the same shape as the input covariance matrix
-        - lam: float, perturbed log step size
+        The perturbed adaptation state with updated mean, covariance, and lambda value.
     """
     mean1, cov1, lam1 = adapt_state
     k1, k2, k3 = random.split(rng_key, 3)
@@ -281,22 +274,14 @@ def sample_neigbour(rng_key, adapt_state, eps=1e-2):
 
 def state_dist(s1, s2):
     """
-    Computes the distance between two adaptive states.
+    Computes the distance between two states based on their log step size and covariance.
 
-    Parameters
-    ----------
-    s1 : AMHAdaptState
-        The first adaptive state, represented as a tuple of (mean, cov, lam).
-    s2 : AMHAdaptState
-        The second adaptive state, represented as a tuple of (mean, cov, lam).
+    Args:
+        s1: The first state object containing log_step_size and covariance attributes.
+        s2: The second state object containing log_step_size and covariance attributes.
 
-    Returns
-    -------
-    float
-        The distance between the two states, computed as the sum of:
-        - L2 norm of the difference between the means
-        - L2 norm of the difference between the covariance matrices
-        - L2 norm of the difference between the log step sizes
+    Returns:
+        The Frobenius norm of the difference between the two covariance matrices scaled by their respective log step sizes.
     """
     
     C1 = jnp.exp(s1.log_step_size)*s1.covariance
@@ -306,7 +291,19 @@ def state_dist(s1, s2):
 
 
 def sample_Px(rng_key, kernel, x, adapt_state, n_samples=1000):
+    """
+    This function generates samples for a given kernel and initial state (x) using the Adaptive Metropolis-Hastings algorithm.
 
+    Parameters:
+    - rng_key: PRNG key used to generate randomness.
+    - kernel: Sampling kernel that implements the Adaptive Metropolis-Hastings logic.
+    - x: Initial state or starting point for the chain.
+    - adapt_state: Adaptation state required by the kernel, used to adjust the proposal distribution during sampling.
+    - n_samples: Number of samples to generate, defaults to 1000.
+
+    Returns:
+    An array of sampled states, each generated independently from the provided kernel.
+    """
     def single_Px(rkey):
         input_state = AMHState(
                 i=0,
