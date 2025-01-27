@@ -148,10 +148,10 @@ def wasserstein_1d(mu, nu, p=1.0):
     """
 
     # Compute the absolute differences
-    diff = jnp.abs(jnp.sort(mu) - jnp.sort(nu))
+    diff = jnp.abs(jnp.sort(mu, axis=-1) - jnp.sort(nu, axis=-1))
         
     # Compute the p-th root of the sum of differences to the power p
-    return jnp.mean(diff ** p) ** (1.0 / p)
+    return jnp.mean(diff ** p, axis=-1) ** (1.0 / p)
 
 
 # @jit
