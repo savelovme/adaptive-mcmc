@@ -9,6 +9,7 @@ import numpyro
 import numpyro.distributions as dist
 from numpyro.infer.util import initialize_model
 from numpyro.infer.initialization import init_to_uniform
+from numpyro.util import identity
 
 AMHState = namedtuple(
     "AMHState",
@@ -191,6 +192,11 @@ class AMH(numpyro.infer.mcmc.MCMCKernel):
             adapt_state=adapt_state_new,
             rng_key=rng_key,
         )
+
+    def postprocess_fn(self, args, kwargs):
+        if self._postprocess_fn is None:
+            return identity
+        return self._postprocess_fn(*args, **kwargs)
 
     def get_diagnostics_str(self, state):
         """
