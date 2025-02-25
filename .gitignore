@@ -20,3 +20,6 @@ tex/.DS_Store
 .DS_Store
 Themen.pdf
 .DS_Store
+*.log
+*.fls
+*.fdb_latexmk
