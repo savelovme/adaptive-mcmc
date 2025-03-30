@@ -3,7 +3,7 @@ import pandas as pd
 import jax.numpy as jnp
 from jax import random
 
-from evaluation import wasserstein_dist11_p, wasserstein_sinkhorn, max_sliced_wasserstein
+from utils import wasserstein_dist11_p, wasserstein_sinkhorn, max_sliced_wasserstein
 
 def run_algo(x, y, algo):
     if algo == "hungarian":
@@ -31,7 +31,7 @@ if __name__ == "__main__":
 
     start_time_global = time()
 
-    combined_df = pd.read_csv("diamonds-diamonds.csv")
+    combined_df = pd.read_csv("../diamonds-diamonds.csv")
 
     references = jnp.array(combined_df.where(combined_df["source"] == "reference").dropna().drop(columns="source"))
     samples = jnp.array(combined_df.where(combined_df["source"] == "samples").dropna().drop(columns="source"))

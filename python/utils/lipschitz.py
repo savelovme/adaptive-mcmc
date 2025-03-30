@@ -1,4 +1,3 @@
-from functools import partial
 from typing import Callable
 
 import jax
@@ -7,8 +6,6 @@ from jax import random, value_and_grad, vmap, jit
 import flax.linen as nn
 import optax
 
-
-# from AMH import sample_Px
 
 def spectral_norm(W):
     """
