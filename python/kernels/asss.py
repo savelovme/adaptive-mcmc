@@ -173,8 +173,14 @@ class ASSS(MCMCKernel):
         sigma_sqrt = scale * dim**0.5
         sigma_sqrt_inv = triangular_solve(scale, jnp.eye(dim), lower=True) / dim**0.5
 
+        # Define transformed potential energy
+        def transformed_pe(z):
+            x_flat = self._stereographic_inverse(z, loc, sigma_sqrt)
+            pe_transformed = self._potential_fn(unravel_fn(x_flat)) + dim * jnp.log(1 - z[-1])
+            return pe_transformed
+
         z = self._stereographic_project(x_flat, loc, sigma_sqrt_inv)
-        pe_transformed = potential_energy + dim * jnp.log(1 - z[-1])
+        pe_transformed = transformed_pe(z)
 
         # Sample velocity v orthogonal to z
         v = random.normal(key_v, (dim+1,))
@@ -196,11 +202,10 @@ class ASSS(MCMCKernel):
                 r_key, theta, theta_min, theta_max = val
 
                 z_theta = z * jnp.cos(theta) + v * jnp.sin(theta)
-                x_theta = self._stereographic_inverse(z_theta, loc, sigma_sqrt)
-                pe_theta = self._potential_fn(unravel_fn(x_theta)) + dim * jnp.log(1 - z_theta[-1])
+                pe_theta = transformed_pe(z_theta)
                 pe_theta = jnp.where(jnp.isnan(pe_theta), jnp.inf, pe_theta)
 
-                return jnp.logical_or(pe_theta >= t_pe, (1.0 - z_theta[-1]) < self._eps).squeeze()
+                return jnp.logical_or(pe_theta > t_pe, (1.0 - z_theta[-1]) < self._eps).squeeze()
 
             def body_fn(val):
                 r_key, theta, theta_min, theta_max = val
@@ -213,9 +218,6 @@ class ASSS(MCMCKernel):
                 return (r_key_next, theta_new, theta_min_new, theta_max_new)
 
             val = (key_shrink, theta, theta_min, theta_max)
-            # while cond_fn(val):
-            #     val = body_fn(val)
-            # theta_final = val[1]
 
             _, theta_final, _, _ = jax.lax.while_loop(
                 cond_fn, body_fn, val

@@ -211,7 +211,7 @@ def compute_wasserstein_contraction(
     #     val = body_fun(val)
     # iter, rng_key, params, opt_state, grad_norm = val
     iter, rng_key, params, opt_state, grad_norm = jax.lax.while_loop(cond_fun, body_fun, init_val_loop)
-
+    print(f"Train finished in {iter} steps. Last gradient norm: {grad_norm}.")
 
     # Final evaluation with batches
     f = jit(lambda x: model.apply(params, x))
@@ -343,7 +343,7 @@ def compute_kernel_distance(
     #     val = body_fun(val)
     # iter, rng_key, params, opt_state, grad_norm = val
     iter, rng_key, params, opt_state, grad_norm = jax.lax.while_loop(cond_fun, body_fun, init_val_loop)
-
+    print(f"Train finished in {iter} steps. Last gradient norm: {grad_norm}.")
 
     # Final evaluation with batches
     f = jit(lambda x: model.apply(params, x))
