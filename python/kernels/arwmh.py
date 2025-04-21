@@ -21,6 +21,7 @@ ARWMHState = namedtuple(
         "potential_energy",  # Current potential energy
         "mean_accept_prob",  # Running mean of acceptance probabilities
         "adapt_state",  # Mean & Covariance matrix estimate + log of step size
+        "as_change",
         "rng_key",  # Random number generator state
     ],
 )
@@ -41,7 +42,7 @@ class ARWMH(MCMCKernel):
     sample_field = "z"
 
     def __init__(
-            self, model=None, potential_fn=None, alpha=1/2, target_accept_prob=0.234, eps=1e-6, init_strategy=init_to_median
+            self, model=None, potential_fn=None, lr_rate=2/3, target_accept_prob=0.234, eps=1e-6, init_strategy=init_to_median
     ):
         """
         Initialize the ARWMH kernel.
@@ -52,8 +53,8 @@ class ARWMH(MCMCKernel):
             The model to initialize the kernel. Either `model` or `potential_fn` must be specified, but not both.
         potential_fn : callable, optional
             A potential function representing the negative log-posterior density.
-        alpha: float, optional
-            Parameter controlling the learning rate: gamma = 1 / n**alpha, default is 1/2.
+        lr_rate: float, optional
+            Parameter controlling the learning rate: gamma = 1 / n**lr_rate, default is 2/3.
         target_accept_prob : float, optional
             Target acceptance rate for adaptation, default is 0.3.
         eps : float, optional
@@ -70,7 +71,7 @@ class ARWMH(MCMCKernel):
             raise ValueError("Only one of `model` or `potential_fn` must be specified.")
         self._model = model
         self._potential_fn = potential_fn
-        self._alpha = alpha
+        self._lr_rate = lr_rate
         self._target_accept_prob = target_accept_prob
         self._eps = eps
         self._postprocess_fn = None
@@ -131,6 +132,7 @@ class ARWMH(MCMCKernel):
             potential_energy=potential_energy,
             mean_accept_prob=jnp.array(0.0),
             adapt_state=adapt_state,
+            as_change=jnp.array(0.0),
             rng_key=rng_key,
         )
 
@@ -154,7 +156,7 @@ class ARWMH(MCMCKernel):
         ARWMHState
             Updated state after sampling.
         """
-        i, z, potential_energy, mean_accept_prob, adapt_state, rng_key = state
+        i, z, potential_energy, mean_accept_prob, adapt_state, _, rng_key = state
         mu_hat, sigma_hat_sqrt, log_lambda = adapt_state
 
         z_flat, unravel_fn = ravel_pytree(z)
@@ -165,8 +167,6 @@ class ARWMH(MCMCKernel):
         prop_scale = sigma_hat_sqrt * jnp.exp(log_lambda) + jnp.eye(dim) * self._eps
         z_proposal_flat = z_flat + jnp.dot(prop_scale, prop_base)
 
-        # z_step_flat = dist.MultivariateNormal(loc=0.0, covariance_matrix=proposal_cov).sample(key_proposal)
-        # z_proposal_flat = z_flat + z_step_flat * jnp.exp(log_lambda / 2)
         z_proposal = unravel_fn(z_proposal_flat)
         potential_energy_proposal = self._potential_fn(z_proposal)
         potential_energy_proposal = jnp.where(jnp.isnan(potential_energy_proposal), jnp.inf, potential_energy_proposal)
@@ -181,7 +181,7 @@ class ARWMH(MCMCKernel):
         itr = i + 1
         n = jnp.where(i < self._num_warmup, itr, itr - self._num_warmup)
         # learning rate
-        gamma = 1 / n ** self._alpha
+        gamma = 1 / n ** self._lr_rate
 
         mean_accept_prob_new = mean_accept_prob + (accept_prob - mean_accept_prob) / n
 
@@ -190,11 +190,12 @@ class ARWMH(MCMCKernel):
         mu_new = mu_hat + gamma * delta
         cholesky = cholesky_update(jnp.sqrt(1 - gamma) * sigma_hat_sqrt, delta, gamma)
         sigma_sqrt_new = jnp.where(jnp.any(jnp.isnan(cholesky)), sigma_hat_sqrt, cholesky)
-        # sigma_new = sigma_hat + gamma * (jnp.outer(delta, delta) - sigma_hat)
 
         log_lambda_new = log_lambda + gamma * (accept_prob - self._target_accept_prob)
 
         adapt_state_new = ARWMHAdaptState(mu_new, sigma_sqrt_new, log_lambda_new)
+
+        scale_diffs = jnp.linalg.matrix_norm(sigma_sqrt_new * jnp.exp(log_lambda_new) - sigma_hat_sqrt * jnp.exp(log_lambda))
 
         return ARWMHState(
             i=itr,
@@ -202,6 +203,7 @@ class ARWMH(MCMCKernel):
             potential_energy=potential_energy_new,
             mean_accept_prob=mean_accept_prob_new,
             adapt_state=adapt_state_new,
+            as_change=scale_diffs,
             rng_key=rng_key,
         )
 
@@ -226,8 +228,8 @@ class ARWMH(MCMCKernel):
         """
         return f"Acceptance rate: {state.mean_accept_prob:.2f}, Step size: {jnp.exp(state.adapt_state.log_step_size):.3f}"
 
-    def sample_Pnx(self, rng_key, x, adapt_state, n=1, n_samples=1000):
-        @jit
+    def sample_Pnx(self, rng_key, x, adapt_state, n=1, n_samples=1000, jit_inner=True):
+        # @jit
         def single_Pnx(x, key):
             def single_Px(i, val_tuple):
                 x, key, pot_energy = val_tuple
@@ -246,6 +248,12 @@ class ARWMH(MCMCKernel):
             x_new, key, pot_energy = jax.lax.fori_loop(0, n, single_Px, (x, key, pot_energy))
             return x_new
 
+        if jit_inner:
+            single_Pnx = jit(single_Pnx)
+
+        # r_keys = random.split(rng_key, n_samples)
+        # samples = vmap(vmap(single_Pnx, in_axes=(None, 0)), in_axes=(0, None))(x, r_keys)
+        #
         n_points = x.shape[0]
         r_keys = random.split(rng_key, (n_points, n_samples))
 

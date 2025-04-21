@@ -18,14 +18,77 @@ ASSSState = namedtuple(
     "ASSSState",
     [
         "i",  # Iteration
-        "z",  # Current point on the sphere (S^d)
+        "z",  # Current point
         "potential_energy",  # Current potential energy
-        "adapt_state",  # Mean & Covariance matrix estimate
+        # "diverging" # Whether the new sample potential energy is diverging from the current one
+        "adapt_state",  # Mean & Scale matrix estimates
+        "as_change",
         "rng_key",  # Random number generator state
     ],
 )
 
 ASSSAdaptState = namedtuple("ASSSAdaptState", ["loc", "scale"])
+
+
+def _stereographic_project(x, loc, scale):
+    """
+    Project x from R^d to S^d using mu and Sigma.
+    scale is assumed to be lower-triangular
+    """
+    x_shifted = x - loc
+    x_rescaled = triangular_solve(scale, x_shifted, left_side=True, lower=True)
+    norm_sq = jnp.sum(x_rescaled ** 2)
+    z_1d = 2 * x_rescaled / (norm_sq + 1)
+    z_d1 = (norm_sq - 1) / (norm_sq + 1)
+    z = jnp.concatenate([z_1d, z_d1[None]])
+    return z
+
+
+def _stereographic_inverse(z, loc, scale):
+    """
+    Project z from S^d back to R^d.
+    scale is assumed to be lower-triangular
+    """
+    z_1d = z[:-1]
+    z_d1 = z[-1]
+    x_base = z_1d / (1 - z_d1)
+    x = jnp.dot(scale, x_base) + loc
+    return x
+
+
+def _shrinkage(rng_key, z, v, t_pe, transformed_pe_fn, eps=1e-6):
+    key_init, key_loop = random.split(rng_key)
+    theta = dist.Uniform(0, 2 * jnp.pi).sample(key_init)
+
+    theta_min = theta - 2 * jnp.pi
+    theta_max = theta
+
+    def cond_fn(val):
+        r_key, theta, theta_min, theta_max = val
+
+        z_theta = z * jnp.cos(theta) + v * jnp.sin(theta)
+        pe_theta = transformed_pe_fn(z_theta)
+        pe_theta = jnp.where(jnp.isnan(pe_theta), jnp.inf, pe_theta)
+
+        return jnp.logical_or(pe_theta > t_pe, (1.0 - z_theta[-1]) < eps).squeeze()
+
+    def body_fn(val):
+        r_key, theta, theta_min, theta_max = val
+        key_sample, r_key_next = random.split(r_key)
+        theta_min_new = jnp.where(theta < 0.0, theta, theta_min)
+        theta_max_new = jnp.where(theta >= 0.0, theta, theta_max)
+
+        theta_new = dist.Uniform(theta_min_new, theta_max_new).sample(key_sample)
+
+        return (r_key_next, theta_new, theta_min_new, theta_max_new)
+
+    val = (key_loop, theta, theta_min, theta_max)
+
+    _, theta_final, _, _ = jax.lax.while_loop(
+        cond_fn, body_fn, val
+    )
+    z_new = z * jnp.cos(theta_final) + v * jnp.sin(theta_final)
+    return z_new
 
 
 class ASSS(MCMCKernel):
@@ -36,7 +99,7 @@ class ASSS(MCMCKernel):
     sample_field = "z"
 
     def __init__(
-        self, model=None, potential_fn=None, alpha=1/2, eps=1e-6, x_rad=1e6, init_strategy=init_to_median
+        self, model=None, potential_fn=None, lr_rate=2/3, eps=1e-6, init_strategy=init_to_median
     ):
         """
         Initialize the ASSS kernel.
@@ -47,12 +110,10 @@ class ASSS(MCMCKernel):
             The model to initialize the kernel. Either `model` or `potential_fn` must be specified.
         potential_fn : callable, optional
             A potential function representing the negative log-posterior density.
-        alpha: float, optional
-            Parameter controlling the learning rate: gamma = 1 / n**alpha, default is 1/2.
+        lr_rate: float, optional
+            Parameter controlling the learning rate: gamma = 1 / n**lr_rate, default is 2/3.
         eps : float, optional
             Regularization term, default is 1e-6.
-        x_rad : float, optional
-            Max x value per dimension, default is 1e6.
         init_strategy : callable, optional
             A per-site initialization function, default is `init_to_uniform`.
         """
@@ -60,9 +121,8 @@ class ASSS(MCMCKernel):
             raise ValueError("Only one of `model` or `potential_fn` must be specified.")
         self._model = model
         self._potential_fn = potential_fn
-        self._alpha = alpha
+        self._lr_rate = lr_rate
         self._eps = eps
-        self._x_rad = x_rad
         self._postprocess_fn = None
         self._init_strategy = init_strategy
         self._num_warmup = 0
@@ -70,25 +130,6 @@ class ASSS(MCMCKernel):
     @property
     def model(self):
         return self._model
-
-    def _stereographic_project(self, x, mu, sigma_inv_sqrt):
-        """Project x from R^d to S^d using mu and Sigma."""
-        x_shifted = x - mu
-        x_scaled = jnp.dot(sigma_inv_sqrt, x_shifted)
-        norm_sq = jnp.sum(x_scaled ** 2)
-        z_1d = 2 * x_scaled / (norm_sq + 1)
-        z_d1 = (norm_sq - 1) / (norm_sq + 1)
-        z = jnp.concatenate([z_1d, z_d1[None]])
-        return z
-
-    def _stereographic_inverse(self, z, mu, sigma_sqrt):
-        """Project z from S^d back to R^d."""
-        z_1d = z[:-1]
-        z_d1 = z[-1]
-        x_base = z_1d / (1 - z_d1)
-        x = jnp.dot(sigma_sqrt, x_base) + mu
-        # x_clipped = jnp.clip(x, -self._x_rad, self._x_rad)
-        return x
 
     def init(self, rng_key, num_warmup, init_params, model_args, model_kwargs):
         """
@@ -139,10 +180,10 @@ class ASSS(MCMCKernel):
             z=init_params,
             potential_energy=potential_energy,
             adapt_state=adapt_state,
+            as_change=jnp.array(0.0),
             rng_key=rng_key,
         )
         return init_state
-
 
     def sample(self, state, model_args, model_kwargs):
         """
@@ -162,24 +203,25 @@ class ASSS(MCMCKernel):
         ASSSState
             Updated state after sampling.
         """
-        i, x, potential_energy, adapt_state, rng_key = state
+        i, x, potential_energy, adapt_state, _, rng_key = state
         loc, scale = adapt_state
 
         x_flat, unravel_fn = ravel_pytree(x)
         rng_key, key_v, key_t, key_shrink = random.split(rng_key, 4)
 
-        dim = len(loc)
+        dim = loc.shape[-1]
 
         sigma_sqrt = scale * dim**0.5
-        sigma_sqrt_inv = triangular_solve(scale, jnp.eye(dim), lower=True) / dim**0.5
+        # sigma_sqrt_inv = triangular_solve(scale, jnp.eye(dim), lower=True) / dim**0.5
 
         # Define transformed potential energy
+        @jit
         def transformed_pe(z):
-            x_flat = self._stereographic_inverse(z, loc, sigma_sqrt)
-            pe_transformed = self._potential_fn(unravel_fn(x_flat)) + dim * jnp.log(1 - z[-1])
+            x_flat = _stereographic_inverse(z, loc, sigma_sqrt)
+            pe_transformed = self._potential_fn(unravel_fn(x_flat)) + dim * jnp.log(1. - z[-1])
             return pe_transformed
 
-        z = self._stereographic_project(x_flat, loc, sigma_sqrt_inv)
+        z = _stereographic_project(x_flat, loc, sigma_sqrt)
         pe_transformed = transformed_pe(z)
 
         # Sample velocity v orthogonal to z
@@ -191,43 +233,9 @@ class ASSS(MCMCKernel):
         u_t = dist.Uniform().sample(key_t)
         t_pe = pe_transformed - jnp.log(u_t)
 
-        def shrinkage(r_key, z, v, t_pe):
-            key_init, key_loop = random.split(r_key)
-            theta = dist.Uniform(0, 2 * jnp.pi).sample(key_init)
+        z_new = _shrinkage(key_shrink, z, v, t_pe, transformed_pe, self._eps)
 
-            theta_min = theta - 2 * jnp.pi
-            theta_max = theta
-
-            def cond_fn(val):
-                r_key, theta, theta_min, theta_max = val
-
-                z_theta = z * jnp.cos(theta) + v * jnp.sin(theta)
-                pe_theta = transformed_pe(z_theta)
-                pe_theta = jnp.where(jnp.isnan(pe_theta), jnp.inf, pe_theta)
-
-                return jnp.logical_or(pe_theta > t_pe, (1.0 - z_theta[-1]) < self._eps).squeeze()
-
-            def body_fn(val):
-                r_key, theta, theta_min, theta_max = val
-                key_sample, r_key_next = random.split(r_key)
-                theta_min_new = jnp.where(theta < 0.0, theta, theta_min)
-                theta_max_new = jnp.where(theta >= 0.0, theta, theta_max)
-
-                theta_new = dist.Uniform(theta_min_new, theta_max_new).sample(key_sample)
-
-                return (r_key_next, theta_new, theta_min_new, theta_max_new)
-
-            val = (key_shrink, theta, theta_min, theta_max)
-
-            _, theta_final, _, _ = jax.lax.while_loop(
-                cond_fn, body_fn, val
-            )
-            z_new = z * jnp.cos(theta_final) + v * jnp.sin(theta_final)
-            return z_new
-
-        z_new = shrinkage(key_shrink, z, v, t_pe)
-
-        x_new_flat = self._stereographic_inverse(z_new, loc, sigma_sqrt)
+        x_new_flat = _stereographic_inverse(z_new, loc, sigma_sqrt)
         x_new = unravel_fn(x_new_flat)
         pe_new = self._potential_fn(x_new)
         pe_new = jnp.where(jnp.isnan(pe_new), jnp.inf, pe_new)
@@ -235,21 +243,25 @@ class ASSS(MCMCKernel):
         # Adaptation
         itr = i + 1
         n = jnp.where(i < self._num_warmup, itr, itr - self._num_warmup)
-        gamma = 1 / n ** self._alpha # Learning rate
+        gamma = 1 / n ** self._lr_rate # Learning rate
 
         delta = x_new_flat - loc
-        mu_new = loc + gamma * delta
+        loc_new = loc + gamma * delta
         # cov_new = cov + gamma * (jnp.outer(delta, delta) - cov)
         cholesky = cholesky_update(jnp.sqrt(1 - gamma) * scale, delta, gamma)
         scale_new = jnp.where(jnp.any(jnp.isnan(cholesky)), scale, cholesky)
 
-        adapt_state_new = ASSSAdaptState(mu_new, scale_new)
+        adapt_state_new = ASSSAdaptState(loc_new, scale_new)
+
+        loc_diffs = jnp.linalg.vector_norm(loc_new - loc)
+        scale_diffs = jnp.linalg.matrix_norm(scale_new - scale)
 
         return ASSSState(
             i=itr,
             z=x_new,
             potential_energy=pe_new,
             adapt_state=adapt_state_new,
+            as_change=(loc_diffs + scale_diffs),
             rng_key=rng_key,
         )
 
@@ -261,12 +273,11 @@ class ASSS(MCMCKernel):
     def get_diagnostics_str(self, state):
         return f"Iteration: {state.i}, Potential Energy: {state.potential_energy:.2f}"
 
-    def sample_Pnx(self, rng_key, x, adapt_state, n=1, n_samples=1000):
+    def sample_Pnx(self, rng_key, x, adapt_state, n=1, n_samples=1000, jit_inner=True):
         """
         Return samples from P^n(x, .)
         """
 
-        @jit
         def single_Pnx(x, key):
             def single_Px(i, val_tuple):
                 x, key, pot_energy = val_tuple
@@ -282,17 +293,20 @@ class ASSS(MCMCKernel):
 
             pot_energy = self._potential_fn(x)
 
-
             x_new, key_new, pot_energy_new = jax.lax.fori_loop(
                 0, n, single_Px, (x, key, pot_energy)
             )
 
             return x_new
 
+        if jit_inner:
+            single_Pnx = jit(single_Pnx)
+
         n_points = x.shape[0]
         r_keys = random.split(rng_key, (n_points, n_samples))
 
         samples = vmap(vmap(single_Pnx, in_axes=(None, 0)))(x, r_keys)
+        # samples = vmap(vmap(single_Pnx), in_axes=(None, 1), out_axes=1)(x, r_keys)
 
         return samples
 
