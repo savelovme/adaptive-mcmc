@@ -1,5 +1,4 @@
 from collections import namedtuple
-from math import gamma
 
 import jax
 from jax.flatten_util import ravel_pytree
@@ -42,7 +41,7 @@ class ARWMH(MCMCKernel):
     sample_field = "z"
 
     def __init__(
-            self, model=None, potential_fn=None, lr_rate=2/3, target_accept_prob=0.234, eps=1e-6, init_strategy=init_to_median
+            self, model=None, potential_fn=None, lr_decay=2/3, target_accept_prob=0.234, eps=1e-6, init_strategy=init_to_median
     ):
         """
         Initialize the ARWMH kernel.
@@ -53,8 +52,8 @@ class ARWMH(MCMCKernel):
             The model to initialize the kernel. Either `model` or `potential_fn` must be specified, but not both.
         potential_fn : callable, optional
             A potential function representing the negative log-posterior density.
-        lr_rate: float, optional
-            Parameter controlling the learning rate: gamma = 1 / n**lr_rate, default is 2/3.
+        lr_decay: float, optional
+            Parameter controlling the learning rate: gamma = 1 / n^lr_decay, default is 2/3.
         target_accept_prob : float, optional
             Target acceptance rate for adaptation, default is 0.3.
         eps : float, optional
@@ -71,7 +70,7 @@ class ARWMH(MCMCKernel):
             raise ValueError("Only one of `model` or `potential_fn` must be specified.")
         self._model = model
         self._potential_fn = potential_fn
-        self._lr_rate = lr_rate
+        self._lr_decay = lr_decay
         self._target_accept_prob = target_accept_prob
         self._eps = eps
         self._postprocess_fn = None
@@ -171,7 +170,7 @@ class ARWMH(MCMCKernel):
         potential_energy_proposal = self._potential_fn(z_proposal)
         potential_energy_proposal = jnp.where(jnp.isnan(potential_energy_proposal), jnp.inf, potential_energy_proposal)
 
-        accept_prob = jnp.clip(jnp.exp(potential_energy - potential_energy_proposal), min=0, max=1)
+        accept_prob = jnp.clip(jnp.exp(potential_energy - potential_energy_proposal), max=1)
         is_accepted = dist.Uniform().sample(key_accept) < accept_prob
 
         z_new_flat = jnp.where(is_accepted, z_proposal_flat, z_flat)
@@ -181,7 +180,7 @@ class ARWMH(MCMCKernel):
         itr = i + 1
         n = jnp.where(i < self._num_warmup, itr, itr - self._num_warmup)
         # learning rate
-        gamma = 1 / n ** self._lr_rate
+        gamma = 1 / n ** self._lr_decay
 
         mean_accept_prob_new = mean_accept_prob + (accept_prob - mean_accept_prob) / n
 
