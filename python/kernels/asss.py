@@ -103,7 +103,7 @@ class ASSS(MCMCKernel):
     sample_field = "z"
 
     def __init__(
-        self, model=None, potential_fn=None, lr_decay=2/3, eps=1e-6, init_strategy=init_to_median
+        self, model=None, potential_fn=None, lr_decay=2/3, eps=1e-6, init_strategy=init_to_uniform
     ):
         """
         Initialize the ASSS kernel.
