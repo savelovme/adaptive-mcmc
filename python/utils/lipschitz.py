@@ -1,5 +1,5 @@
 from typing import Callable
-
+from functools import partial, reduce
 import jax
 import jax.numpy as jnp
 from jax import random, value_and_grad, vmap, jit
@@ -52,8 +52,6 @@ def spectral_norm(W):
     # Compute spectral norm (largest singular value)
     sigma = jnp.dot(u, jnp.dot(W, v))
 
-    # sigma = jnp.linalg.matrix_norm(W, ord=2)
-
     # Normalize weight matrix
     W_sn = W / jnp.clip(sigma, 1.0)
 
@@ -92,17 +90,6 @@ class LipschitzNN(nn.Module):
 
         x = SpectralNormDense(1)(x)  # Single output for scalar function
         return x.squeeze()
-
-
-# class LipschitzOperator(nn.Module):
-#
-#     @nn.compact
-#     def __call__(self, x):
-#         W = self.param('kernel', nn.initializers.lecun_normal(), (x.shape[-1], 1))
-#         W_norm = W / jnp.sqrt(W.T @ W)
-#         x = jnp.dot(x, W_norm)
-#
-#         return x.squeeze()
 
 
 
@@ -241,9 +228,10 @@ def compute_kernel_distance(
     sample_batch_size=1000,
     n_train_batches=10,
     n_eval_batches=100,
-    alpha=10,
     max_steps=100,
     lr=0.1,
+    alpha=10,
+    init_params=None,
 ):
     """
     Compute the kernel distance rho_d(P, Q) using a 1-Lipschitz neural network.
@@ -258,10 +246,11 @@ def compute_kernel_distance(
         n_eval_batches: int Number of batches for final eval
         max_steps: Number of training max_steps
         lr: Learning rate
-        alpha: Parameter for smooth max
+        alpha: Parameter used for smooth max
+        init_params: Initializer for NN
 
     Returns:
-        tau: Estimated Wasserstein contraction coefficient
+        rho, model, params
     """
 
     n_points, dim = X.shape
@@ -278,6 +267,8 @@ def compute_kernel_distance(
     rng_key, key_func = random.split(rng_key)
     model = LipschitzNN(dim)
     params = model.init(rng_key, jnp.ones((1, dim)))
+    if init_params is not None:
+        params = init_params
 
     # Loss function with batched sampling
     def loss_fn(params, rng_key):
@@ -365,5 +356,138 @@ def compute_kernel_distance(
     diffs = jnp.abs(dPf[:, None] - dPf[None, :])
     ratios = jnp.where(mask, diffs / dists, 0.0)
     tau = jnp.max(ratios)
+
+    return tau, model, params
+
+# Kernel Distance Computation
+def compute_kernel_distance_1d(
+    sample_Px: Callable,
+    sample_Qx: Callable,
+    rng_key,
+    x,
+    sample_batch_size=10000,
+    n_train_batches=1,
+    n_eval_batches=100,
+    max_steps=100,
+    lr=0.1,
+    ratio_rad=1,
+    init_params=None,
+):
+    """
+    Compute the kernel distance rho_d(P, Q) using a 1-Lipschitz neural network.
+
+    Args:
+        sample_Px: Callable Sample function with arguments rng_key, x, n_samples
+        sample_Qx: Callable Sample function with arguments rng_key, x, n_samples
+        rng_key: JAX PRNG key
+        x: Array of shape (n_points, ), initial points to evaluate contraction
+        sample_batch_size: int Batch size for sampling (per point)
+        n_train_batches: int Number of batches for training
+        n_eval_batches: int Number of batches for final eval
+        max_steps: Number of training max_steps
+        lr: Learning rate
+        alpha: Parameter used for smooth max
+        init_params: Initializer for NN
+
+    Returns:
+        rho, model, params
+    """
+
+    n_points = len(x)
+    X = x.reshape(n_points, 1)
+    threshold = 1e-10
+
+    # Initialize model
+    rng_key, key_func = random.split(rng_key)
+    model = LipschitzNN(dim=1)
+    params = model.init(rng_key, jnp.ones((1, 1)))
+    if init_params is not None:
+        params = init_params
+
+    @jit
+    def dPf_batch(r_key, params):
+        key_p,key_q = random.split(r_key)
+        batch_Px = sample_Px(key_p, X, sample_batch_size)  # Shape: (n_points, sample_batch_size, 1)
+        batch_Qx = sample_Qx(key_q, X, sample_batch_size)  # Shape: (n_points, sample_batch_size, 1)
+
+        Pf = model.apply(params, batch_Px).mean(axis=1)  # Shape: (n_points,)
+        Qf = model.apply(params, batch_Qx).mean(axis=1)  # Shape: (n_points,)
+        # Pf = vmap(lambda s: jnp.mean(f(s)))(batch_Px)  # Shape: (n_points,)
+        # Qf = vmap(lambda s: jnp.mean(f(s)))(batch_Qx)  # Shape: (n_points,)
+
+        dPf = Pf - Qf
+
+        return dPf
+
+    # Loss function with batched sampling
+    def loss_fn(params, rng_key):
+
+        rng_keys = random.split(rng_key, n_train_batches)
+        dPf = jnp.mean(jax.lax.map(partial(dPf_batch, params=params), rng_keys), axis=0)
+        # dPf = vmap(dPf_batch, in_axes=(0, None))(rng_keys, params).mean(axis=0)
+
+        diffs = jnp.abs(dPf[:-ratio_rad] - dPf[ratio_rad:])
+        dists = jnp.abs(x[:-ratio_rad] - x[ratio_rad:])
+
+        ratios = diffs / dists
+        return -ratios.max()
+        # jnp.concatenate([
+        #     jnp.abs(dPf[i:] - dPf[:-i]) / jnp.abs(x[i:] - x[:-i])
+        #     for i in range(*ratios_rads)
+        # ])
+        #
+        # smooth_max = jax.nn.logsumexp(alpha * ratios) / alpha
+        # return -smooth_max
+
+    # Optimization step with scan
+    optimizer = optax.adam(lr)
+    opt_state = optimizer.init(params)
+
+    # Optimization step
+    @jit
+    def step(params, opt_state, rng_key):
+        # Compute loss and gradients only w.r.t. params (argnums=0)
+        loss, grads = value_and_grad(loss_fn, argnums=0)(params, rng_key)
+        grads = jax.tree_map(lambda g: jnp.clip(g, -1.0, 1.0), grads)  # Clip gradients
+        updates, opt_state = optimizer.update(grads, opt_state)
+        params = optax.apply_updates(params, updates)
+
+        return params, opt_state, loss, grads
+
+    # Training loop
+    def body_fun(val):
+        iter, rng_key, params, opt_state, grad_norm = val
+
+        iter += 1
+        rng_key, subkey = random.split(rng_key)
+
+        params, opt_state, loss, grads = step(params, opt_state, subkey)
+        grad_norm = jax.tree_util.tree_reduce(lambda acc, x: acc + jnp.sum(x ** 2), grads, 0.0)
+
+        new_val = (iter, rng_key, params, opt_state, grad_norm)
+        return new_val
+
+    def cond_fun(val):
+        iter, rng_key, params, opt_state, grad_norm = val
+
+        return jnp.logical_and(iter < max_steps, grad_norm > threshold)
+
+    init_val_loop = (0, rng_key, params, opt_state, 1.0)
+    # val = init_val_loop
+    # while(cond_fun(val)):
+    #     val = body_fun(val)
+    # iter, rng_key, params, opt_state, grad_norm = val
+    iter, rng_key, params, opt_state, grad_norm = jax.lax.while_loop(cond_fun, body_fun, init_val_loop)
+    print(f"Train finished in {iter} steps. Last gradient norm: {grad_norm}.")
+
+    # Final evaluation with batches
+    rng_keys = random.split(rng_key, n_eval_batches)
+    # dPf = vmap(dPf_batch, in_axes=(0, None))(rng_keys, params).mean(axis=0)
+    dPf = jnp.mean(jax.lax.map(partial(dPf_batch, params=params), rng_keys), axis=0)
+
+    diffs = jnp.abs(dPf[1:] - dPf[:-1])
+    dists = jnp.abs(x[1:] - x[:-1])
+
+    tau = jnp.max(diffs / dists)
 
     return tau, model, params
