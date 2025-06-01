@@ -9,12 +9,12 @@ import numpyro.infer as infer
 from jax import random
 import jax.numpy as jnp
 
-sys.path.append("/Users/mikhail/Master/adaptive-mcmc/python")
+sys.path.append(f"{os.environ['MCMC_WORKDIR']}/python")
 
 from kernels import ARWMH, ASSS, NUTS
 from utils.evaluation import pth_moment_rmse, wasserstein_dist11_p, mmd2_unbiased, mmd_heuristic
 
-pdb_path = "/Users/mikhail/Master/posteriordb/posterior_database"
+pdb_path = f"{os.environ['MCMC_WORKDIR']}/posteriordb/posterior_database"
 my_pdb = PosteriorDatabase(pdb_path)
 
 posterior = my_pdb.posterior("eight_schools-eight_schools_noncentered")
@@ -82,8 +82,8 @@ if __name__ == "__main__":
 
     for kernel_str in ["rwm", "sss", "nuts"]:
 
-        runs_dir = f"/Users/mikhail/Master/adaptive-mcmc/python/mcmc_runs/w_eval/eight_schools/{kernel_str}"
+        runs_dir = f"{os.environ['MCMC_WORKDIR']}/python/mcmc_runs/w_eval/eight_schools/{kernel_str}"
 
         eval_df = pd.DataFrame.from_records(data=eval_rows(runs_dir), nrows=100)
 
-        eval_df.to_csv(f"/Users/mikhail/Master/adaptive-mcmc/python/mcmc_runs/w_eval/eight_schools/eval_{kernel_str}.csv")
+        eval_df.to_csv(f"{os.environ['MCMC_WORKDIR']}/python/mcmc_runs/w_eval/eight_schools/eval_{kernel_str}.csv")

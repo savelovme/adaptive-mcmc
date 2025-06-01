@@ -8,12 +8,12 @@ import numpyro.infer as infer
 from jax import random
 import jax.numpy as jnp
 
-sys.path.append("/Users/mikhail/Master/adaptive-mcmc/python")
+sys.path.append(f"{os.environ['MCMC_WORKDIR']}/python")
 
 from kernels import ARWMH, ASSS, NUTS
 
 
-pdb_path = "/Users/mikhail/Master/posteriordb/posterior_database"
+pdb_path = f"{os.environ['MCMC_WORKDIR']}/posteriordb/posterior_database"
 my_pdb = PosteriorDatabase(pdb_path)
 
 posterior = my_pdb.posterior("eight_schools-eight_schools_noncentered")
@@ -33,9 +33,6 @@ def model(sigma, y=None):
             )
         numpyro.sample('obs', dist.Normal(theta, sigma), obs=y)
 
-kernel_rwm = ARWMH(model)
-kernel_sss = ASSS(model)
-kernel_nuts = NUTS(model)
 
 def run_kernel(rng_seed, kernel_str, sample_params):
 
@@ -53,9 +50,7 @@ def run_kernel(rng_seed, kernel_str, sample_params):
              **data,
              extra_fields=("potential_energy", "adapt_state")
     )
-    run_results = (mcmc.get_samples(), mcmc.get_extra_fields())
-
-    out_dir = f"/Users/mikhail/Master/adaptive-mcmc/python/mcmc_runs/w_eval/eight_schools/{kernel_str}"
+    out_dir = f"{os.environ['MCMC_WORKDIR']}/python/mcmc_runs/w_eval/eight_schools/{kernel_str}"
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
     with open(f"{out_dir}/run{rng_seed}.pkl", "wb") as f:
@@ -70,7 +65,6 @@ if __name__ == "__main__":
             sample_params = dict(num_warmup=25000, num_samples=250000, thinning=25)
         elif kernel_str == "nuts":
             sample_params = dict(num_warmup=10000, num_samples=100000, thinning=10)
-        # sample_params = dict(num_warmup=0, num_samples=int(1e6), thinning=1)
         for rng_seed in range(100):
                 run_kernel(rng_seed, kernel_str, sample_params)
         print(f"{kernel_str} ready!")

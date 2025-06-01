@@ -238,6 +238,7 @@ class ARWMH(MCMCKernel):
                     potential_energy=pot_energy,
                     mean_accept_prob=0.,
                     adapt_state=adapt_state,
+                    as_change=0.,
                     rng_key=key
                 )
                 next_state = self.sample(state=input_state, model_args=(), model_kwargs={})

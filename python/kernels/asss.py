@@ -289,6 +289,7 @@ class ASSS(MCMCKernel):
                     z=x,
                     potential_energy=pot_energy,
                     adapt_state=adapt_state,
+                    as_change=0.,
                     rng_key=key
                 )
                 next_state = self.sample(state=input_state, model_args=(), model_kwargs={})

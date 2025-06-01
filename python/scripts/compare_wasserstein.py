@@ -1,9 +1,11 @@
+import os
+import pickle
 from time import time
 import pandas as pd
 import jax.numpy as jnp
 from jax import random
 
-from utils import wasserstein_dist11_p, wasserstein_sinkhorn, max_sliced_wasserstein
+from utils.evaluation import wasserstein_dist11_p, wasserstein_sinkhorn, max_sliced_wasserstein
 
 def run_algo(x, y, algo):
     if algo == "hungarian":
@@ -31,13 +33,41 @@ if __name__ == "__main__":
 
     start_time_global = time()
 
-    combined_df = pd.read_csv("../diamonds-diamonds.csv")
+    with open(os.environ['MCMC_WORKDIR'] + "/python/mcmc_runs/diamonds-example-references.pkl", "rb") as f:
+        references_dict = pickle.load(f)
+    with open(os.environ['MCMC_WORKDIR'] + "/python/mcmc_runs/diamonds-example-samples.pkl", "rb") as f:
+        samples_dict = pickle.load(f)
 
-    references = jnp.array(combined_df.where(combined_df["source"] == "reference").dropna().drop(columns="source"))
-    samples = jnp.array(combined_df.where(combined_df["source"] == "samples").dropna().drop(columns="source"))
+    reference_draws_df = pd.DataFrame({
+        k: v
+        for key, vals in references_dict.items()
+        for k, v in
+        ([(key, vals)] if vals.ndim == 1 else zip([f"{key}[{i + 1}]" for i in range(vals.shape[-1])], vals.T))
+    })
+    posterior_samples_df = pd.DataFrame({
+        k: v
+        for key, vals in samples_dict.items()
+        for k, v in
+        ([(key, vals)] if vals.ndim == 1 else zip([f"{key}[{i + 1}]" for i in range(vals.shape[-1])], vals.T))
+    })
+    combined_df = pd.concat([
+        reference_draws_df.assign(source="reference"),
+        posterior_samples_df.assign(source="samples"),
+    ])
+    combined_df.to_pickle(os.environ['MCMC_WORKDIR'] + "/python/mcmc_runs/diamonds-example-combined.pkl")
+
+    N = 10000
+    keys = list(references_dict.keys())
+    references = jnp.concat(
+        [references_dict[key].reshape(N, -1) for key in keys],
+        axis=1
+    )
+    samples = jnp.concat(
+        [samples_dict[key].reshape(N, -1) for key in keys],
+        axis=1
+    )
 
     algo_data = {"algo": [], "n": [], "d": [], "dist": [], "runtime": []}
-
 
     for algo in ["hungarian", "sinkhorn_eps1e-2", "sinkhorn_eps1e-3", "sinkhorn_eps1e-4",
                  "max_sliced_dir100", "max_sliced_dir10000"]:
@@ -69,7 +99,7 @@ if __name__ == "__main__":
 
 
     df = pd.DataFrame(algo_data)
-    df.to_pickle("wasserstein_comparison.pkl")
+    df.to_pickle(os.environ['MCMC_WORKDIR'] + "/python/mcmc_runs/wasserstein_comparison.pkl")
 
     total_elapsed_time = time() - start_time_global
     if total_elapsed_time > 7200:

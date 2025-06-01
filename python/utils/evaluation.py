@@ -6,8 +6,8 @@ from scipy.stats import wasserstein_distance_nd as wasserstein_scipy
 from scipy.optimize import linear_sum_assignment
 from scipy.spatial import distance_matrix
 
-# from ott.geometry import pointcloud, costs
-# from ott.solvers import linear
+from ott.geometry import pointcloud, costs
+from ott.solvers import linear
 
 
 @jit
@@ -66,65 +66,65 @@ def wasserstein_dist11_p(u_values, v_values, ord=2.0):
     return opt_cost
 
 
-# def wasserstein_sinkhorn(u_values, v_values, cost_fn=costs.Euclidean(), epsilon=None):
-#     """
-#     Compute entropy regularized Wasserstein distance approximation using Sinkhorn's algorithm.
-#
-#     Parameters
-#     ----------
-#     u_values : jnp.ndarray
-#         Array of shape (n, d).
-#     v_values : jnp.ndarray
-#         Array of shape (m, d).
-#     cost_fn : costs.CostFunction, optional
-#         Cost function to use, default is Euclidean.
-#     epsilon : float or None, optional
-#         Entropy regularization parameter.
-#
-#     Returns
-#     -------
-#     float
-#         Scalar value representing the approximated Wasserstein distance.
-#
-#     """
-#
-#     geom = pointcloud.PointCloud(x=u_values, y=v_values, cost_fn=cost_fn, epsilon=epsilon)
-#
-#     ot_solve_fn = jit(linear.solve)
-#     ot = ot_solve_fn(geom)
-#
-#     # assert ot.converged
-#
-#     return ot.ent_reg_cost.item()
-#
-#
-# def wasserstein_sinkhorn_unbiased(u_values, v_values, cost_fn=costs.Euclidean(), epsilon=None):
-#     """
-#     Compute unbiased Wasserstein distance approximation using Sinkhorn's algorithm.
-#
-#     Parameters
-#     ----------
-#     u_values : jnp.ndarray
-#         Array of shape (n, d).
-#     v_values : jnp.ndarray
-#         Array of shape (m, d).
-#     cost_fn : costs.CostFunction, optional
-#         Cost function to use, default is Euclidean.
-#     epsilon : float or None, optional
-#         Entropy regularization parameter.
-#
-#     Returns
-#     -------
-#     float
-#         Scalar value representing the unbiased approximated Wasserstein distance.
-#
-#     """
-#
-#     Wuv = wasserstein_sinkhorn(u_values, v_values, cost_fn=cost_fn, epsilon=epsilon)
-#     Wuu = wasserstein_sinkhorn(u_values, u_values, cost_fn=cost_fn, epsilon=epsilon)
-#     Wvv = wasserstein_sinkhorn(v_values, v_values, cost_fn=cost_fn, epsilon=epsilon)
-#
-#     return Wuv - (Wuu + Wvv)/2
+def wasserstein_sinkhorn(u_values, v_values, cost_fn=costs.Euclidean(), epsilon=None):
+    """
+    Compute entropy regularized Wasserstein distance approximation using Sinkhorn's algorithm.
+
+    Parameters
+    ----------
+    u_values : jnp.ndarray
+        Array of shape (n, d).
+    v_values : jnp.ndarray
+        Array of shape (m, d).
+    cost_fn : costs.CostFunction, optional
+        Cost function to use, default is Euclidean.
+    epsilon : float or None, optional
+        Entropy regularization parameter.
+
+    Returns
+    -------
+    float
+        Scalar value representing the approximated Wasserstein distance.
+
+    """
+
+    geom = pointcloud.PointCloud(x=u_values, y=v_values, cost_fn=cost_fn, epsilon=epsilon)
+
+    ot_solve_fn = jit(linear.solve)
+    ot = ot_solve_fn(geom)
+
+    # assert ot.converged
+
+    return ot.ent_reg_cost.item()
+
+
+def wasserstein_sinkhorn_unbiased(u_values, v_values, cost_fn=costs.Euclidean(), epsilon=None):
+    """
+    Compute unbiased Wasserstein distance approximation using Sinkhorn's algorithm.
+
+    Parameters
+    ----------
+    u_values : jnp.ndarray
+        Array of shape (n, d).
+    v_values : jnp.ndarray
+        Array of shape (m, d).
+    cost_fn : costs.CostFunction, optional
+        Cost function to use, default is Euclidean.
+    epsilon : float or None, optional
+        Entropy regularization parameter.
+
+    Returns
+    -------
+    float
+        Scalar value representing the unbiased approximated Wasserstein distance.
+
+    """
+
+    Wuv = wasserstein_sinkhorn(u_values, v_values, cost_fn=cost_fn, epsilon=epsilon)
+    Wuu = wasserstein_sinkhorn(u_values, u_values, cost_fn=cost_fn, epsilon=epsilon)
+    Wvv = wasserstein_sinkhorn(v_values, v_values, cost_fn=cost_fn, epsilon=epsilon)
+
+    return Wuv - (Wuu + Wvv)/2
 
 
 def wasserstein_1d(mu, nu, p=1.0):
@@ -292,3 +292,4 @@ def mmd_heuristic(x, y):
     mmd2 = jnp.sum(Kxx) / n**2 + jnp.sum(Kyy) / m**2- 2 * jnp.sum(Kxy) / (n * m)
 
     return jnp.sqrt(mmd2)
+
